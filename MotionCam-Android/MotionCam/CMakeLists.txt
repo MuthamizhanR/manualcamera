@@ -228,6 +228,8 @@ add_library( # Sets the name of the library.
         ${libmotioncam-src}/source/Color.cpp
         ${libmotioncam-src}/source/ImageOps.cpp
         ${libmotioncam-src}/source/ImageProcessor.cpp
+        ${CMAKE_SOURCE_DIR}/../../libMotionCam/mcraw_v3/Encoder.cpp
+        ${CMAKE_SOURCE_DIR}/../../libMotionCam/mcraw_v3/WriterQueue.cpp
         ${libmotioncam-src}/source/CameraPreview.cpp
         ${libmotioncam-src}/source/Logger.cpp
         ${libmotioncam-src}/source/Measure.cpp
@@ -240,6 +242,8 @@ add_library( # Sets the name of the library.
 # Include directories
 target_include_directories(motion-cam PUBLIC
         ${libmotioncam-src}/include
+        ${CMAKE_SOURCE_DIR}/../../libMotionCam/mcraw_v3
+        ${CMAKE_SOURCE_DIR}/../../libMotionCam/thirdparty/queue/queue
         ${thirdparty-libs}/json11
         ${thirdparty-libs}/miniz
         ${thirdparty-libs}/opencl
