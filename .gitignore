@@ -6,3 +6,6 @@ libMotionCam/thirdparty/opencv/
 libMotionCam/thirdparty/expat/
 libMotionCam/thirdparty/exiv2/
 libMotionCam/thirdparty/zstd/
+build
+decoder_build
+CMakeFiles
