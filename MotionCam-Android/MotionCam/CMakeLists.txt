@@ -265,6 +265,7 @@ set(native-camera-cpp
         src/main/cpp/camera/ClHelper.cpp
         src/main/cpp/camera/NativeClBuffer.cpp
         src/main/cpp/camera/RawImageConsumer.cpp
+        src/main/cpp/camera/DirectLogEncoder.cpp
 )
 
 # Creates and names a library, sets it as either STATIC

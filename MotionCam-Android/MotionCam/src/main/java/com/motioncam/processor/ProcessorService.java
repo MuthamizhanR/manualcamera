@@ -416,7 +416,7 @@ public class ProcessorService extends IntentService {
                 Log.d(TAG, "Processing in-memory container");
                 moreToProcess = inMemoryProcess.call();
             }
-            catch (Exception e) {
+            catch (Throwable e) {
                 Log.e(TAG, "Failed to process in-memory container", e);
                 moreToProcess = false;
             }
@@ -436,7 +436,7 @@ public class ProcessorService extends IntentService {
                 Log.d(TAG, "Processing " + file.getPath());
                 processFile.call();
             }
-            catch (Exception e) {
+            catch (Throwable e) {
                 Log.e(TAG, "Failed to process " + file.getPath(), e);
                 file.delete();
             }

@@ -1,14 +1,33 @@
 package com.motioncam.processor;
 
-public class NativeProcessor {
-    public boolean processInMemory(String outputPath, NativeProcessorProgressListener listener) {
-        boolean result = ProcessInMemory(outputPath, listener);
+import android.util.Log;
 
-        return result;
+public class NativeProcessor {
+    static {
+        try {
+            System.loadLibrary("native-camera-host");
+        }
+        catch (Throwable ignored) {
+        }
+    }
+
+    public boolean processInMemory(String outputPath, NativeProcessorProgressListener listener) {
+        try {
+            return ProcessInMemory(outputPath, listener);
+        }
+        catch (UnsatisfiedLinkError e) {
+            Log.e("MotionCam", "ProcessInMemory not available", e);
+            return false;
+        }
     }
 
     public void processFile(String inputPath, String outputPath, NativeProcessorProgressListener listener) {
-        ProcessFile(inputPath, outputPath, listener);
+        try {
+            ProcessFile(inputPath, outputPath, listener);
+        }
+        catch (UnsatisfiedLinkError e) {
+            Log.e("MotionCam", "ProcessFile not available", e);
+        }
     }
 
     native boolean ProcessInMemory(String outputPath, NativeProcessorProgressListener progressListener);
