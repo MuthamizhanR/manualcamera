@@ -52,6 +52,10 @@ public:
     int height() const { return mHeight; }
     int channels() const { return mChannels; }
 
+    size_t size_in_bytes() const {
+        return static_cast<size_t>(mWidth) * mHeight * mChannels * sizeof(T);
+    }
+
     int stride(int dim) const {
         if (dim == 0) return mStride0;
         if (dim == 1) return mStride1;

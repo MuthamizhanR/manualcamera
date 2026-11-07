@@ -144,7 +144,7 @@ namespace motioncam {
         }
         
         Halide::Runtime::Buffer<uint8_t> getHalideBuffer() {
-            return Halide::Runtime::Buffer<uint8_t>(nativeBufferData, (int) nativeBuffer.len());
+            return Halide::Runtime::Buffer<uint8_t>(nativeBufferData, (int) nativeBuffer.len(), 1);
         }
         
         ~NativeBufferContext() {
@@ -573,7 +573,7 @@ namespace motioncam {
 
     void ImageProcessor::measureImage(RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity)
     {
-    return outSceneLuminosity = 0.0f;
+    outSceneLuminosity = 0.0f;
 }
 
     cv::Mat ImageProcessor::registerImage2(
