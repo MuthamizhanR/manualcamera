@@ -23,6 +23,9 @@ public:
 
     bool configure(const std::string& videoCodecMime, int width, int height, int bitrate, int fps, const std::string& outputFilePath);
     ANativeWindow* getInputSurface();
+    bool makeCurrent();
+    void clearCurrent();
+    bool swapBuffers(int64_t presentationTimeNs);
     bool start();
     void feedAudioPCM(uint8_t* pcmBuffer, int size, int64_t presentationTimeUs);
     void stop();

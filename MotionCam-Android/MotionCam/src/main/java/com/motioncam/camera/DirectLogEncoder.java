@@ -38,6 +38,26 @@ public class DirectLogEncoder {
         }
     }
 
+    public boolean makeCurrent() {
+        if (mNativeHandle != 0) {
+            return makeCurrentNative(mNativeHandle);
+        }
+        return false;
+    }
+
+    public void clearCurrent() {
+        if (mNativeHandle != 0) {
+            clearCurrentNative(mNativeHandle);
+        }
+    }
+
+    public boolean swapBuffers(long presentationTimeNs) {
+        if (mNativeHandle != 0) {
+            return swapBuffersNative(mNativeHandle, presentationTimeNs);
+        }
+        return false;
+    }
+
     public void stop() {
         if (mNativeHandle != 0) {
             stopNative(mNativeHandle);
@@ -67,6 +87,9 @@ public class DirectLogEncoder {
     private native long initNative();
     private native boolean configureNative(long handle, String videoCodecMime, int width, int height, int bitrate, int fps, String outputFilePath);
     private native Surface getInputSurfaceNative(long handle);
+    private native boolean makeCurrentNative(long handle);
+    private native void clearCurrentNative(long handle);
+    private native boolean swapBuffersNative(long handle, long presentationTimeNs);
     private native boolean startNative(long handle);
     private native void feedAudioNative(long handle, ByteBuffer pcmBuffer, int size, long presentationTimeUs);
     private native void stopNative(long handle);

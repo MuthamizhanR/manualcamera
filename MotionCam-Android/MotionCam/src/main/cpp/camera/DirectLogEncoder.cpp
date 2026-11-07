@@ -66,6 +66,11 @@ bool DirectLogEncoder::configure(const std::string& videoCodecMime, int width, i
         return false;
     }
 
+    if (!setupEGL()) {
+        LOGE("Failed to setup EGL");
+        return false;
+    }
+
     if (!setupAudioEncoder()) {
         LOGE("Failed to setup audio encoder");
         return false;
@@ -165,8 +170,21 @@ bool DirectLogEncoder::setupEGL() {
     EGLConfig config;
     EGLint numConfigs;
     if (!eglChooseConfig(mEglDisplay, attribs, &config, 1, &numConfigs) || numConfigs == 0) {
-        LOGE("Failed to choose EGL config for 10-bit recording");
-        return false;
+        LOGE("Failed to choose EGL config for 10-bit recording, trying 8-bit fallback");
+        const EGLint fallbackAttribs[] = {
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_ALPHA_SIZE, 8,
+            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+            EGL_NONE
+        };
+        if (!eglChooseConfig(mEglDisplay, fallbackAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
+            LOGE("Failed to choose fallback EGL config");
+            return false;
+        }
     }
 
     const EGLint contextAttribs[] = {
@@ -196,6 +214,35 @@ bool DirectLogEncoder::setupEGL() {
 
 ANativeWindow* DirectLogEncoder::getInputSurface() {
     return mInputSurface;
+}
+
+bool DirectLogEncoder::makeCurrent() {
+    if (mEglDisplay == EGL_NO_DISPLAY || mEglSurface == EGL_NO_SURFACE || mEglContext == EGL_NO_CONTEXT) {
+        return false;
+    }
+    return eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) == EGL_TRUE;
+}
+
+void DirectLogEncoder::clearCurrent() {
+    if (mEglDisplay != EGL_NO_DISPLAY) {
+        eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+}
+
+bool DirectLogEncoder::swapBuffers(int64_t presentationTimeNs) {
+    if (mEglDisplay == EGL_NO_DISPLAY || mEglSurface == EGL_NO_SURFACE) {
+        return false;
+    }
+
+    typedef EGLBoolean (*PFNEGLPRESENTATIONTIMEANDROIDPROC)(EGLDisplay, EGLSurface, khronos_stime_nanoseconds_t);
+    static PFNEGLPRESENTATIONTIMEANDROIDPROC eglPresentationTimeANDROID =
+        reinterpret_cast<PFNEGLPRESENTATIONTIMEANDROIDPROC>(eglGetProcAddress("eglPresentationTimeANDROID"));
+
+    if (eglPresentationTimeANDROID && presentationTimeNs > 0) {
+        eglPresentationTimeANDROID(mEglDisplay, mEglSurface, presentationTimeNs);
+    }
+
+    return eglSwapBuffers(mEglDisplay, mEglSurface) == EGL_TRUE;
 }
 
 bool DirectLogEncoder::setupAudioEncoder() {
@@ -478,4 +525,25 @@ Java_com_motioncam_camera_DirectLogEncoder_releaseNative(JNIEnv *env, jobject th
     if (encoder) {
         delete encoder;
     }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_motioncam_camera_DirectLogEncoder_makeCurrentNative(JNIEnv *env, jobject thiz, jlong handle) {
+    auto encoder = reinterpret_cast<motioncam::DirectLogEncoder*>(handle);
+    if (!encoder) return false;
+    return encoder->makeCurrent();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_motioncam_camera_DirectLogEncoder_clearCurrentNative(JNIEnv *env, jobject thiz, jlong handle) {
+    auto encoder = reinterpret_cast<motioncam::DirectLogEncoder*>(handle);
+    if (!encoder) return;
+    encoder->clearCurrent();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_motioncam_camera_DirectLogEncoder_swapBuffersNative(JNIEnv *env, jobject thiz, jlong handle, jlong presentationTimeNs) {
+    auto encoder = reinterpret_cast<motioncam::DirectLogEncoder*>(handle);
+    if (!encoder) return false;
+    return encoder->swapBuffers(presentationTimeNs);
 }
