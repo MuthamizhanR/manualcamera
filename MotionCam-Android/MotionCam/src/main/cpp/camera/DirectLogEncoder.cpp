@@ -105,16 +105,16 @@ bool DirectLogEncoder::setupVideoEncoder() {
 
     // Set 10-bit format
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, COLOR_FormatSurface);
-    AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_STANDARD, COLOR_Standard_BT2020);
-    AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_TRANSFER, COLOR_Transfer_HLG);
+    AMediaFormat_setInt32(format, "color-standard", COLOR_Standard_BT2020);
+    AMediaFormat_setInt32(format, "color-transfer", COLOR_Transfer_HLG);
 
     // Profile Main10 for HEVC
     if (mVideoCodecMime == "video/hevc") {
-        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_PROFILE, 2); // HEVCProfileMain10
-        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_LEVEL, 4096); // HEVCHighTierLevel51
+        AMediaFormat_setInt32(format, "profile", 2); // HEVCProfileMain10
+        AMediaFormat_setInt32(format, "level", 4096); // HEVCHighTierLevel51
     } else if (mVideoCodecMime == "video/av01") {
-        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_PROFILE, 2); // AV1ProfileMain10
-        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_LEVEL, 8192); // AV1Level51
+        AMediaFormat_setInt32(format, "profile", 2); // AV1ProfileMain10
+        AMediaFormat_setInt32(format, "level", 8192); // AV1Level51
     }
 
     media_status_t status = AMediaCodec_configure(mVideoCodec, format, nullptr, nullptr, AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
