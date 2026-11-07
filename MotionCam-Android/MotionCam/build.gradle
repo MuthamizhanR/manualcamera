@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
+    namespace 'com.motioncam'
     signingConfigs {
         garbage_key {
             keyAlias 'androiddebugkey'
@@ -9,7 +10,7 @@ android {
             storePassword 'android'
         }
     }
-    compileSdkVersion 30
+    compileSdk 34
     defaultConfig {
         applicationId "com.motioncam"
         minSdkVersion 24
@@ -49,12 +50,13 @@ android {
     productFlavors {
     }
     compileOptions {
-        sourceCompatibility = 1.8
-        targetCompatibility = 1.8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     buildFeatures {
         dataBinding true
         viewBinding true
+        buildConfig true
     }
     buildToolsVersion '30.0.3'
     ndkVersion '22.1.7171670'

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.motioncam">
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -18,17 +17,22 @@
 
         <activity
             android:name=".PostProcessActivity"
+            android:exported="false"
             android:theme="@style/AppTheme.NoActionBar"/>
 
         <activity
             android:name=".SettingsActivity"
+            android:exported="false"
             android:theme="@style/AppTheme.NoActionBar">
         </activity>
 
-        <service android:name=".processor.ProcessorService" />
+        <service
+            android:name=".processor.ProcessorService"
+            android:exported="false" />
 
         <activity
             android:name=".CameraActivity"
+            android:exported="true"
             android:screenOrientation="portrait">
 
             <intent-filter>
