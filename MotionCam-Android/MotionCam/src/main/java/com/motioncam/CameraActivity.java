@@ -1201,6 +1201,11 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
+        if(mCameraStarting) {
+            Log.w(TAG, "Camera already starting, ignoring duplicate onSurfaceTextureAvailable()");
+            return;
+        }
+
         if(mSurface != null) {
             Log.w(TAG, "Surface still exists, releasing");
             mSurface.release();
@@ -1210,7 +1215,27 @@ public class CameraActivity extends AppCompatActivity implements
         startCamera(surfaceTexture, width, height);
     }
 
+    private boolean mCameraStarting;
+
     private void startCamera(SurfaceTexture surfaceTexture, int width, int height) {
+        if(mCameraStarting) {
+            Log.w(TAG, "startCamera() already in progress, ignoring");
+            return;
+        }
+
+        mCameraStarting = true;
+        try {
+            startCameraInternal(surfaceTexture, width, height);
+        }
+        catch (Exception e) {
+            Log.e(TAG, "Failed to start camera", e);
+        }
+        finally {
+            mCameraStarting = false;
+        }
+    }
+
+    private void startCameraInternal(SurfaceTexture surfaceTexture, int width, int height) {
         int displayWidth;
         int displayHeight;
 
@@ -1243,7 +1268,13 @@ public class CameraActivity extends AppCompatActivity implements
         configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
-        mNativeCamera.startCapture(mSelectedCamera, mSurface, mSettings.useDualExposure, mSettings.rawMode == SettingsViewModel.RawMode.RAW16);
+        try {
+            mNativeCamera.startCapture(mSelectedCamera, mSurface, mSettings.useDualExposure, mSettings.rawMode == SettingsViewModel.RawMode.RAW16);
+        }
+        catch (Exception e) {
+            Log.e(TAG, "startCapture failed", e);
+            return;
+        }
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
