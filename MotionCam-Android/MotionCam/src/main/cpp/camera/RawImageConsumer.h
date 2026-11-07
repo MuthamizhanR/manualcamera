@@ -11,7 +11,7 @@
 #include <motioncam/RawImageMetadata.h>
 
 #ifdef GPU_CAMERA_PREVIEW
-    #include <HalideBuffer.h>
+    #include "HalideBuffer.h"
 #endif
 
 #include <queue/blockingconcurrentqueue.h>

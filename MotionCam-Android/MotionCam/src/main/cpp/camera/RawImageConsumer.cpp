@@ -6,10 +6,7 @@
 #include "NativeClBuffer.h"
 #include "Exceptions.h"
 
-#ifdef GPU_CAMERA_PREVIEW
-    #include <HalideRuntimeOpenCL.h>
-    #include <motioncam/CameraPreview.h>
-#endif
+
 
 #include <chrono>
 #include <memory>
@@ -31,13 +28,7 @@ namespace motioncam {
     static const int MINIMUM_BUFFERS = 16;
     static const int ESTIMATE_SHADOWS_FRAME_INTERVAL = 8;
 
-#ifdef GPU_CAMERA_PREVIEW
-    void VERIFY_RESULT(int32_t errCode, const std::string& errString)
-    {
-        if(errCode != 0)
-            throw RawPreviewException(errString);
-    }
-#endif
+
 
     //
 
@@ -335,16 +326,7 @@ namespace motioncam {
 
         LOGI("Setting up buffers");
 
-#ifdef GPU_CAMERA_PREVIEW
-        {
-            // Make sure the OpenCL library is loaded/symbols looked up in Halide
-            Halide::Runtime::Buffer<int32_t> buf(32);
-            buf.device_malloc(halide_opencl_device_interface());
 
-            // Use relaxed math
-            halide_opencl_set_build_options("-cl-fast-relaxed-math");
-        }
-#endif
 
         while(  mRunning
                 &&  ( memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes
@@ -352,11 +334,7 @@ namespace motioncam {
         {
             std::shared_ptr<RawImageBuffer> buffer;
 
-#ifdef GPU_CAMERA_PREVIEW
-            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
-#else
-            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeHostBuffer>(bufferLength));
-#endif
+
 
             RawBufferManager::get().addBuffer(buffer);
 
@@ -368,181 +346,10 @@ namespace motioncam {
         LOGD("Finished setting up %d buffers", RawBufferManager::get().numBuffers());
     }
 
-#ifdef GPU_CAMERA_PREVIEW
-    Halide::Runtime::Buffer<uint8_t> RawImageConsumer::createCameraPreviewOutputBuffer(const RawImageBuffer& buffer, const int downscaleFactor) {
-        const int width = buffer.width / 2 / downscaleFactor;
-        const int height = buffer.height / 2 / downscaleFactor;
-        const int bufSize = width * height * 4;
 
-        cl_int errCode = 0;
-        cl_context clContext = nullptr;
-        cl_command_queue clQueue = nullptr;
-
-        VERIFY_RESULT(CL_acquire(&clContext, &clQueue), "Failed to acquire CL context");
-
-        cl_mem clOutputBuffer = CL_createBuffer(clContext, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, bufSize, nullptr, &errCode);
-        VERIFY_RESULT(errCode, "Failed to create camera preview buffer");
-
-        halide_buffer_t buf = {0};
-        halide_dimension_t dim[3];
-
-        buf.dim = &dim[0];
-        buf.dimensions = 3;
-        buf.dim[0].extent = width;
-        buf.dim[0].stride = 4;
-        buf.dim[1].extent = height;
-        buf.dim[1].stride = width*4;
-        buf.dim[2].extent = 4;
-        buf.dim[2].stride = 1;
-        buf.type = halide_type_of<uint8_t>();
-
-        VERIFY_RESULT(halide_opencl_wrap_cl_mem(nullptr, &buf, (uint64_t) clOutputBuffer), "Failed to wrap camera preview");
-
-        VERIFY_RESULT(CL_release(), "Failed to release CL context");
-
-        return Halide::Runtime::Buffer<uint8_t>(buf);
-    }
-
-    void RawImageConsumer::releaseCameraPreviewOutputBuffer(Halide::Runtime::Buffer<uint8_t>& buffer) {
-        cl_int errCode = 0;
-        cl_context clContext = nullptr;
-        cl_command_queue clQueue = nullptr;
-
-        VERIFY_RESULT(CL_acquire(&clContext, &clQueue), "Failed to acquire CL context");
-
-        auto clOutputBuffer = (cl_mem) halide_opencl_get_cl_mem(nullptr, buffer.raw_buffer());
-        if(clOutputBuffer == nullptr) {
-            throw RawPreviewException("Failed to get CL memory");
-        }
-
-        VERIFY_RESULT(halide_opencl_detach_cl_mem(nullptr, buffer.raw_buffer()), "Failed to detach CL memory from buffer");
-
-        errCode = CL_releaseMemObject(clOutputBuffer);
-        VERIFY_RESULT(errCode, "Failed to release camera preview buffer");
-
-        CL_release();
-    }
-
-    Halide::Runtime::Buffer<uint8_t> RawImageConsumer::wrapCameraPreviewInputBuffer(const RawImageBuffer& buffer) {
-        halide_buffer_t buf = {0};
-        halide_dimension_t dim;
-
-        buf.dim = &dim;
-        buf.dimensions = 1;
-        buf.dim[0].extent = buffer.data->len();
-        buf.dim[0].stride = 1;
-        buf.type = halide_type_of<uint8_t>();
-
-        VERIFY_RESULT(
-                halide_opencl_wrap_cl_mem(nullptr, &buf, (uint64_t) buffer.data->nativeHandle()),
-                "Failed to wrap camera preview buffer");
-
-        return Halide::Runtime::Buffer<uint8_t>(buf);
-    }
-
-    void RawImageConsumer::unwrapCameraPreviewInputBuffer(Halide::Runtime::Buffer<uint8_t>& buffer) {
-        VERIFY_RESULT(
-                halide_opencl_detach_cl_mem(nullptr, buffer.raw_buffer()),
-                "Failed to unwrap camera preview buffer");
-    }
-#endif
 
     void RawImageConsumer::doPreprocess() {
-#ifdef GPU_CAMERA_PREVIEW
-        Halide::Runtime::Buffer<uint8_t> outputBuffer;
-        std::shared_ptr<RawImageBuffer> buffer;
 
-        std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
-        std::chrono::steady_clock::time_point previewTimestamp;
-
-        cl_int errCode = -1;
-
-        bool outputCreated = false;
-        int downscaleFactor = mRawPreviewQuality;
-        int processedFrames = 0;
-        double totalPreviewTimeMs = 0;
-
-        while(mEnableRawPreview) {
-            if(!mPreprocessQueue.wait_dequeue_timed(buffer, std::chrono::milliseconds(100))) {
-                continue;
-            }
-
-            if(!outputCreated) {
-                outputBuffer = createCameraPreviewOutputBuffer(*buffer, downscaleFactor);
-                outputCreated = true;
-            }
-
-            Halide::Runtime::Buffer<uint8_t> inputBuffer = wrapCameraPreviewInputBuffer(*buffer);
-
-            previewTimestamp = std::chrono::steady_clock::now();
-
-            motioncam::CameraPreview::generate(
-                    *buffer,
-                    mCameraDesc->metadata,
-                    downscaleFactor,
-                    mCameraDesc->lensFacing == ACAMERA_LENS_FACING_FRONT,
-                    mPreviewShadows,
-                    mEstimatedSettings.contrast,
-                    mEstimatedSettings.saturation,
-                    mEstimatedSettings.blacks,
-                    mEstimatedSettings.whitePoint,
-                    mTempOffset,
-                    mTintOffset,
-                    0.25f,
-                    inputBuffer,
-                    outputBuffer);
-
-            totalPreviewTimeMs +=
-                    std::chrono::duration <double, std::milli>(std::chrono::steady_clock::now() - previewTimestamp).count();
-
-            unwrapCameraPreviewInputBuffer(inputBuffer);
-
-            cl_context clContext = nullptr;
-            cl_command_queue clQueue = nullptr;
-
-            VERIFY_RESULT(CL_acquire(&clContext, &clQueue), "Failed to acquire CL context");
-
-            auto clOutputBuffer = (cl_mem) halide_opencl_get_cl_mem(nullptr, outputBuffer.raw_buffer());
-            auto data = CL_enqueueMapBuffer(
-                    clQueue, clOutputBuffer, CL_TRUE, CL_MAP_READ, 0, outputBuffer.size_in_bytes(), 0, nullptr, nullptr, &errCode);
-
-            VERIFY_RESULT(errCode, "Failed to map output buffer");
-
-            mPreviewListener->onPreviewGenerated(data, outputBuffer.size_in_bytes(), outputBuffer.width(), outputBuffer.height());
-
-            errCode = CL_enqueueUnmapMemObject(clQueue, clOutputBuffer, data, 0, nullptr, nullptr);
-            VERIFY_RESULT(errCode, "Failed to unmap output buffer");
-
-            VERIFY_RESULT(CL_release(), "Failed to release CL context");
-
-            // Return buffer
-            onBufferReady(buffer);
-
-            processedFrames += 1;
-
-            auto now = std::chrono::steady_clock::now();
-            double durationMs = std::chrono::duration <double, std::milli>(now - fpsTimestamp).count();
-
-            // Print camera FPS + stats
-            if(durationMs > 3000.0f) {
-                double avgProcessTimeMs = totalPreviewTimeMs / processedFrames;
-
-                LOGI("Camera FPS: %d, cameraQuality=%d processTimeMs=%.2f", processedFrames / 3, downscaleFactor, avgProcessTimeMs);
-
-                processedFrames = 0;
-                totalPreviewTimeMs = 0;
-
-                fpsTimestamp = now;
-            }
-        }
-
-        if(outputCreated)
-            releaseCameraPreviewOutputBuffer(outputBuffer);
-
-        while(mPreprocessQueue.try_dequeue(buffer)) {
-            RawBufferManager::get().discardBuffer(buffer);
-        }
-#endif
         LOGD("Exiting preprocess thread");
     }
 

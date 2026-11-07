@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <opencv2/opencv.hpp>
-#include <HalideBuffer.h>
+#include "HalideBuffer.h"
 
 namespace motioncam {
     class RawImage;

@@ -1422,7 +1422,7 @@ int32_t AudioSampleConverter<T>::sampleToThirtyTwoBitInt (T sample)
     else
     {
         if constexpr (std::is_signed_v<T>)
-            return static_cast<int32_t> (clamp (sample, -2147483648LL, 2147483647LL));
+            return static_cast<int32_t> (clamp ((int64_t)sample, (int64_t)-2147483648L, (int64_t)2147483647L));
         else
             return static_cast<int32_t> (clamp (sample, 0, 4294967295) - 2147483648);
     }
@@ -1439,7 +1439,7 @@ T AudioSampleConverter<T>::twentyFourBitIntToSample (int32_t sample)
     else if (std::numeric_limits<T>::is_integer)
     {
         if constexpr (std::is_signed_v<T>)
-            return static_cast<T> (clamp (sample, SignedInt24_Min, SignedInt24_Max));
+            return static_cast<T> (clamp (sample, -8388608, 8388607));
         else
             return static_cast<T> (clamp (sample + 8388608, UnsignedInt24_Min, UnsignedInt24_Max));
     }
@@ -1457,9 +1457,9 @@ int32_t AudioSampleConverter<T>::sampleToTwentyFourBitInt (T sample)
     else
     {
         if constexpr (std::is_signed_v<T>)
-            return static_cast<int32_t> (clamp (sample, SignedInt24_Min, SignedInt24_Max));
+            return static_cast<int32_t> (clamp ((int32_t)sample, -8388608, 8388607));
         else
-            return static_cast<int32_t> (clamp (sample, UnsignedInt24_Min, UnsignedInt24_Max) + SignedInt24_Min);
+            return static_cast<int32_t> (clamp (sample, UnsignedInt24_Min, UnsignedInt24_Max) + -8388608);
     }
 }
 

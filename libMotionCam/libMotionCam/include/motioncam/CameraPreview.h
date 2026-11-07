@@ -1,7 +1,7 @@
 #ifndef CameraPreview_hpp
 #define CameraPreview_hpp
 
-#include <HalideBuffer.h>
+#include "HalideBuffer.h"
 
 namespace motioncam {
     class RawCameraMetadata;

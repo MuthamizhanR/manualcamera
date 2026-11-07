@@ -18,8 +18,10 @@
 #define Decoder_hpp
 
 #include <motioncam/Container.hpp>
+#include <motioncam/MotionSample.hpp>
 #include <nlohmann/json.hpp>
 
+#include <functional>
 #include <string>
 #include <vector>
 #include <map>
@@ -40,9 +42,17 @@ namespace motioncam {
 
     class AudioChunkLoader {
         public:
+            virtual ~AudioChunkLoader() = default;
             virtual bool next(AudioChunk& output) = 0;
     };
     
+    // Views are valid only during the callback. Return true to continue loading,
+    // false to cancel. JSON is the exact on-disk byte sequence, not reserialized.
+    using EncodedFrameCallback = std::function<bool(
+        Timestamp timestamp,
+        const uint8_t* encodedData, size_t encodedSize,
+        const uint8_t* metadataJson, size_t metadataSize)>;
+
     class Decoder {
     public:
         Decoder(const std::string& path);
@@ -59,6 +69,13 @@ namespace motioncam {
         // Load a single frame and its metadata.
         void loadFrame(const Timestamp timestamp, std::vector<uint8_t>& outData, nlohmann::json& outMetadata);
 
+        // Inspect the compressed payload and original JSON before parsing/decoding.
+        // An empty callback or false result throws IOException. Callback exceptions
+        // propagate. Outputs are unchanged when cancelled; no pixels are decoded.
+        // Do not modify/retain the supplied buffers; keep the recording immutable.
+        void loadFrame(const Timestamp timestamp, std::vector<uint8_t>& outData,
+            nlohmann::json& outMetadata, const EncodedFrameCallback& callback);
+
         // Load metadata of a single frame.
         void loadFrameMetadata(const Timestamp timestamp, nlohmann::json& outMetadata);
         
@@ -73,19 +90,43 @@ namespace motioncam {
         
         // Load audio in chunks
         AudioChunkLoader& loadAudio() const;
+
+        // Whether the container has embedded raw gyro samples.
+        bool hasGyroData() const;
+
+        // Load all raw gyro samples. Timestamps use the same nanosecond timeline
+        // as frame timestamps; axis values are radians per second.
+        void loadGyroData(std::vector<MotionSample>& outGyroSamples);
+
+        // Whether the container has embedded accelerometer samples.
+        bool hasAccelerometerData() const;
+
+        // Append all accelerometer samples in chunk order. Timestamps use the
+        // frame nanosecond timeline; values are m/s^2 including gravity, retaining
+        // the source platform's sensor axes/signs. No resampling or conversion.
+        // Containers without accelerometer data leave outSamples unchanged.
+        void loadAccelerometerData(std::vector<MotionSample>& outSamples);
         
     private:
+        void loadFrameImpl(Timestamp timestamp, std::vector<uint8_t>& outData,
+            nlohmann::json& outMetadata, const EncodedFrameCallback* callback);
         void init();
         void read(void* data, size_t size, size_t items=1) const;
         void readIndex();
+        void readGyroIndex(uint32_t itemSize);
+        void readAccelerometerIndex(uint32_t itemSize);
+        bool payloadFitsInFile(uint32_t itemSize) const;
         void reindexOffsets();
         void readExtra();
         void uncompress(const std::vector<uint8_t>& src, std::vector<uint8_t>& dst);
         
     private:
         FILE* mFile;
+        int64_t mBufferStartOffset;
         std::vector<BufferOffset> mOffsets;
         std::vector<BufferOffset> mAudioOffsets;
+        std::vector<BufferOffset> mGyroOffsets;
+        std::vector<BufferOffset> mAccelerometerOffsets;
         std::map<Timestamp, BufferOffset> mFrameOffsetMap;
         std::vector<Timestamp> mFrameList;
         nlohmann::json mMetadata;
