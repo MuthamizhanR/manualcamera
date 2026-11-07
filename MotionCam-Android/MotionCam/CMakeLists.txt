@@ -122,104 +122,6 @@ set_target_properties(zstd PROPERTIES IMPORTED_LOCATION
         ${thirdparty-libs}/zstd/lib/libzstd.a)
 
 #
-# Halide libraries
-#
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-#
-
-add_library(2 STATIC IMPORTED)
-set_target_properties(2 PROPERTIES IMPORTED_LOCATION
-
-add_library(2 STATIC IMPORTED)
-set_target_properties(2 PROPERTIES IMPORTED_LOCATION
-
-add_library(2 STATIC IMPORTED)
-set_target_properties(2 PROPERTIES IMPORTED_LOCATION
-
-add_library(2 STATIC IMPORTED)
-set_target_properties(2 PROPERTIES IMPORTED_LOCATION
-
-#
-
-add_library(4 STATIC IMPORTED)
-set_target_properties(4 PROPERTIES IMPORTED_LOCATION
-
-add_library(4 STATIC IMPORTED)
-set_target_properties(4 PROPERTIES IMPORTED_LOCATION
-
-add_library(4 STATIC IMPORTED)
-set_target_properties(4 PROPERTIES IMPORTED_LOCATION
-
-add_library(4 STATIC IMPORTED)
-set_target_properties(4 PROPERTIES IMPORTED_LOCATION
-
-#
-
-add_library(8 STATIC IMPORTED)
-set_target_properties(8 PROPERTIES IMPORTED_LOCATION
-
-add_library(8 STATIC IMPORTED)
-set_target_properties(8 PROPERTIES IMPORTED_LOCATION
-
-add_library(8 STATIC IMPORTED)
-set_target_properties(8 PROPERTIES IMPORTED_LOCATION
-
-add_library(8 STATIC IMPORTED)
-set_target_properties(8 PROPERTIES IMPORTED_LOCATION
-
-#
-
-add_library(postprocess STATIC IMPORTED)
-set_target_properties(postprocess PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library( STATIC IMPORTED)
-set_target_properties( PROPERTIES IMPORTED_LOCATION
-
-add_library(inverse_transform STATIC IMPORTED)
-set_target_properties(inverse_transform PROPERTIES IMPORTED_LOCATION
-
-
-
-#
 # OpenCV
 #
 
@@ -413,30 +315,6 @@ set(native-camera-libs
         exiv2-xmp
         libexpat
 
-        # Halide libraries
-
-
-
-
-
-        2
-        2
-        2
-        2
-        4
-        4
-        4
-        4
-        8
-        8
-        8
-        8
-        postprocess
-
-
-
-        inverse_transform
-
         # Thirdparty libraries
         opencv-calib3d
         opencv-xfeatures2d
@@ -477,10 +355,4 @@ target_link_libraries(native-camera-host
 
 target_link_libraries(native-camera-opencl
         ${native-camera-libs}
-
-
-
-
-
-
 )

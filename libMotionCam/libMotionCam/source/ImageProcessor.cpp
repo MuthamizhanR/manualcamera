@@ -9,33 +9,6 @@
 #include "motioncam/Settings.h"
 #include "motioncam/ImageOps.h"
 
-// Halide
-#include "generate_edges.h"
-#include "measure_image.h"
-#include "deinterleave_raw.h"
-#include "forward_transform.h"
-#include "inverse_transform.h"
-#include "fuse_image.h"
-#include "fuse_denoise.h"
-
-#include "linear_image.h"
-#include "hdr_mask.h"
-
-#include "preview_landscape2.h"
-#include "preview_portrait2.h"
-#include "preview_reverse_portrait2.h"
-#include "preview_reverse_landscape2.h"
-#include "preview_landscape4.h"
-#include "preview_portrait4.h"
-#include "preview_reverse_portrait4.h"
-#include "preview_reverse_landscape4.h"
-#include "preview_landscape8.h"
-#include "preview_portrait8.h"
-#include "preview_reverse_portrait8.h"
-#include "preview_reverse_landscape8.h"
-
-#include "postprocess.h"
-
 #include <iostream>
 #include <fstream>
 #include <algorithm>

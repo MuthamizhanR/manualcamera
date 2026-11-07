@@ -19,7 +19,7 @@ android {
         versionName "3.0.5"
         externalNativeBuild {
             cmake {
-                version "3.10.3"
+                version "3.22.1"
                 cppFlags "-frtti -fexceptions"
                 arguments "-DANDROID_STL=c++_shared"
             }
