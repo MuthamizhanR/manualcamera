@@ -1,1 +1,8 @@
 tmp
+
+# Native dependencies built by scripts/build-thirdparty-android.sh
+.thirdparty-build/
+libMotionCam/thirdparty/opencv/
+libMotionCam/thirdparty/expat/
+libMotionCam/thirdparty/exiv2/
+libMotionCam/thirdparty/zstd/
