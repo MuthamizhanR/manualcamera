@@ -3,6 +3,22 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <chrono>
+#include <dlfcn.h>
+#include <media/NdkMediaCodec.h>
+
+// AMediaCodec_createInputSurface / signalEndOfInputStream are API 26+, but minSdk is 24.
+// Resolve them at runtime to keep the build and older devices working.
+static media_status_t DL_AMediaCodec_createInputSurface(AMediaCodec* codec, ANativeWindow** surface) {
+    using Fn = media_status_t (*)(AMediaCodec*, ANativeWindow**);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "AMediaCodec_createInputSurface"));
+    return fn ? fn(codec, surface) : AMEDIA_ERROR_UNSUPPORTED;
+}
+
+static media_status_t DL_AMediaCodec_signalEndOfInputStream(AMediaCodec* codec) {
+    using Fn = media_status_t (*)(AMediaCodec*);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "AMediaCodec_signalEndOfInputStream"));
+    return fn ? fn(codec) : AMEDIA_ERROR_UNSUPPORTED;
+}
 
 #define LOG_TAG "DirectLogEncoder"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -109,7 +125,7 @@ bool DirectLogEncoder::setupVideoEncoder() {
         return false;
     }
 
-    status = AMediaCodec_createInputSurface(mVideoCodec, &mInputSurface);
+    status = DL_AMediaCodec_createInputSurface(mVideoCodec, &mInputSurface);
     if (status != AMEDIA_OK || !mInputSurface) {
         LOGE("Failed to create input surface: %d", status);
         return false;
@@ -327,7 +343,7 @@ void DirectLogEncoder::stop() {
     mIsRunning = false;
 
     if (mVideoCodec) {
-        AMediaCodec_signalEndOfInputStream(mVideoCodec);
+        DL_AMediaCodec_signalEndOfInputStream(mVideoCodec);
     }
 
     if (mAudioCodec) {
@@ -422,7 +438,10 @@ Java_com_motioncam_camera_DirectLogEncoder_getInputSurfaceNative(JNIEnv *env, jo
     ANativeWindow* window = encoder->getInputSurface();
     if (!window) return nullptr;
 
-    return ANativeWindow_toSurface(env, window);
+    // The NDK has no ANativeWindow -> android.view.Surface conversion; callers must
+    // use the native window directly (EGL) rather than a Java Surface.
+    LOGE("getInputSurfaceNative: Java Surface conversion is not supported by the NDK");
+    return nullptr;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
