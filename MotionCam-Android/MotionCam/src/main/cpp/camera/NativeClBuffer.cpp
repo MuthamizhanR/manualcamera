@@ -3,7 +3,6 @@
 
 #ifdef GPU_CAMERA_PREVIEW
 
-#include <HalideRuntimeOpenCL.h>
 
 namespace motioncam {
     NativeClBuffer::NativeClBuffer(size_t bufferLength) :
@@ -13,8 +12,8 @@ namespace motioncam {
         cl_context clContext = nullptr;
         cl_command_queue clQueue = nullptr;
 
-        int halide_error = CL_acquire(&clContext, &clQueue);
-        if (halide_error != 0) {
+        int cl_error = CL_acquire(&clContext, &clQueue);
+        if (cl_error != 0) {
         }
 
         mClBuffer = CL_createBuffer(clContext, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, bufferLength, nullptr, &errCode);
@@ -35,8 +34,8 @@ namespace motioncam {
         cl_context clContext = nullptr;
         cl_command_queue clQueue = nullptr;
 
-        int halide_error = CL_acquire(&clContext, &clQueue);
-        if (halide_error != 0) {
+        int cl_error = CL_acquire(&clContext, &clQueue);
+        if (cl_error != 0) {
         }
 
         mLockedBuffer = CL_enqueueMapBuffer(clQueue, mClBuffer, CL_TRUE, write ? CL_MAP_WRITE : CL_MAP_READ, 0, mBufferLength, 0, nullptr, nullptr, &errCode);
@@ -55,8 +54,8 @@ namespace motioncam {
         cl_context clContext = nullptr;
         cl_command_queue clQueue = nullptr;
 
-        int halide_error = CL_acquire(&clContext, &clQueue);
-        if (halide_error != 0) {
+        int cl_error = CL_acquire(&clContext, &clQueue);
+        if (cl_error != 0) {
         }
 
         cl_int errCode = CL_enqueueUnmapMemObject(clQueue, mClBuffer, mLockedBuffer, 0, nullptr, nullptr);

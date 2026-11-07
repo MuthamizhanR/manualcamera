@@ -1,7 +1,7 @@
 #ifndef MOTIONCAM_ANDROID_RAWPREVIEWLISTENER_H
 #define MOTIONCAM_ANDROID_RAWPREVIEWLISTENER_H
 
-#include <HalideBuffer.h>
+#include "HalideBuffer.h"
 
 namespace motioncam {
     class RawPreviewListener {

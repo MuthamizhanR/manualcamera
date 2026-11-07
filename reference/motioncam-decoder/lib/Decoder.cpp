@@ -1,5 +1,6 @@
 #include <motioncam/Decoder.hpp>
 #include <motioncam/RawData.hpp>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -93,18 +94,32 @@ namespace motioncam {
     
     //
 
-    Decoder::Decoder(FILE* file) : mFile(file) {
+    Decoder::Decoder(FILE* file) : mFile(file), mBufferStartOffset(0) {
         if(!mFile)
             throw IOException("Invalid file");
-            
-        init();
+
+        try {
+            init();
+        }
+        catch(...) {
+            std::fclose(mFile);
+            mFile = nullptr;
+            throw;
+        }
     }
 
-    Decoder::Decoder(const std::string& path) : mFile(std::fopen(path.c_str(), "rb")) {
+    Decoder::Decoder(const std::string& path) : mFile(std::fopen(path.c_str(), "rb")), mBufferStartOffset(0) {
         if(!mFile)
             throw IOException("Failed to open " + path);
-            
-        init();
+
+        try {
+            init();
+        }
+        catch(...) {
+            std::fclose(mFile);
+            mFile = nullptr;
+            throw;
+        }
     }
     
     Decoder::~Decoder() {
@@ -138,6 +153,10 @@ namespace motioncam {
         // Keep the camera metadata
         auto cameraMetadataString = std::string(metadataJson.begin(), metadataJson.end());
         mMetadata = nlohmann::json::parse(cameraMetadataString);
+
+        mBufferStartOffset = FTELL(mFile);
+        if(mBufferStartOffset < 0)
+            throw IOException("Failed to get buffer start offset");
   
         readIndex();
 
@@ -179,8 +198,85 @@ namespace motioncam {
     AudioChunkLoader& Decoder::loadAudio() const {
         return *mAudioLoader;
     }
+
+    bool Decoder::hasGyroData() const {
+        return !mGyroOffsets.empty();
+    }
+
+    bool Decoder::hasAccelerometerData() const {
+        return !mAccelerometerOffsets.empty();
+    }
+
+    void Decoder::loadGyroData(std::vector<MotionSample>& outGyroSamples) {
+        for(const auto& offset : mGyroOffsets) {
+            if(FSEEK(mFile, offset.offset, SEEK_SET) != 0)
+                throw IOException("Invalid gyro data offset");
+
+            Item item{};
+            read(&item, sizeof(Item));
+
+            if(item.type != Type::GYRO_DATA || item.size < sizeof(GyroDataHeader) || !payloadFitsInFile(item.size))
+                throw IOException("Invalid gyro data");
+
+            GyroDataHeader header{};
+            read(&header, sizeof(GyroDataHeader));
+
+            const uint64_t expectedSize = sizeof(GyroDataHeader)
+                + static_cast<uint64_t>(header.numSamples) * sizeof(MotionSample);
+            if(header.version != GYRO_DATA_VERSION || header.numSamples == 0 || expectedSize != item.size)
+                throw IOException("Invalid gyro data");
+
+            if(header.numSamples > outGyroSamples.max_size() - outGyroSamples.size())
+                throw IOException("Too many gyro samples");
+
+            const size_t oldSize = outGyroSamples.size();
+            outGyroSamples.resize(oldSize + header.numSamples);
+            read(outGyroSamples.data() + oldSize, sizeof(MotionSample), header.numSamples);
+        }
+    }
+
+    void Decoder::loadAccelerometerData(std::vector<MotionSample>& outSamples) {
+        for(const auto& offset : mAccelerometerOffsets) {
+            if(FSEEK(mFile, offset.offset, SEEK_SET) != 0)
+                throw IOException("Invalid accelerometer data offset");
+
+            Item item{};
+            read(&item, sizeof(Item));
+
+            if(item.type != Type::ACCELEROMETER_DATA || item.size < sizeof(AccelerometerDataHeader)
+                || !payloadFitsInFile(item.size))
+                throw IOException("Invalid accelerometer data");
+
+            AccelerometerDataHeader header{};
+            read(&header, sizeof(AccelerometerDataHeader));
+
+            const uint64_t expectedSize = sizeof(AccelerometerDataHeader)
+                + static_cast<uint64_t>(header.numSamples) * sizeof(MotionSample);
+            if(header.version != ACCELEROMETER_DATA_VERSION || header.numSamples == 0 || expectedSize != item.size)
+                throw IOException("Invalid accelerometer data");
+
+            if(header.numSamples > outSamples.max_size() - outSamples.size())
+                throw IOException("Too many accelerometer samples");
+
+            const size_t oldSize = outSamples.size();
+            outSamples.resize(oldSize + header.numSamples);
+            read(outSamples.data() + oldSize, sizeof(MotionSample), header.numSamples);
+        }
+    }
     
     void Decoder::loadFrame(const Timestamp timestamp, std::vector<uint8_t>& outData, nlohmann::json& outMetadata) {
+        loadFrameImpl(timestamp, outData, outMetadata, nullptr);
+    }
+
+    void Decoder::loadFrame(const Timestamp timestamp, std::vector<uint8_t>& outData,
+        nlohmann::json& outMetadata, const EncodedFrameCallback& callback) {
+        if(!callback)
+            throw IOException("Frame callback is required");
+        loadFrameImpl(timestamp, outData, outMetadata, &callback);
+    }
+
+    void Decoder::loadFrameImpl(const Timestamp timestamp, std::vector<uint8_t>& outData,
+        nlohmann::json& outMetadata, const EncodedFrameCallback* callback) {
 
         if(mFrameOffsetMap.find(timestamp) == mFrameOffsetMap.end())
             throw IOException("Frame not found (timestamp: " + std::to_string(timestamp) + ")");
@@ -196,9 +292,12 @@ namespace motioncam {
         if(bufferItem.type != Type::BUFFER)
             throw IOException("Invalid buffer type");
 
-        mTmpBuffer.resize(bufferItem.size);
-
-        read(mTmpBuffer.data(), bufferItem.size);
+        // Own the bytes locally across the callback, including reentrant frame loads.
+        // Reuse the previous allocation on the usual non-reentrant path.
+        std::vector<uint8_t> encodedData;
+        encodedData.swap(mTmpBuffer);
+        encodedData.resize(bufferItem.size);
+        read(encodedData.data(), bufferItem.size);
 
         // Get metadata
         Item metadataItem{};
@@ -209,6 +308,10 @@ namespace motioncam {
 
         std::vector<uint8_t> metadataJson(metadataItem.size);
         read(metadataJson.data(), metadataItem.size);
+
+        if(callback && !(*callback)(timestamp, encodedData.data(), encodedData.size(),
+            metadataJson.data(), metadataJson.size()))
+            throw IOException("Frame load cancelled by callback (timestamp: " + std::to_string(timestamp) + ")");
 
         std::string metadataString = std::string(metadataJson.begin(), metadataJson.end());
         outMetadata = nlohmann::json::parse(metadataString);
@@ -222,16 +325,17 @@ namespace motioncam {
         outData.resize(outputSizeBytes);
 
         if(compressionType == MOTIONCAM_COMPRESSION_TYPE) {
-            if(raw::Decode(reinterpret_cast<uint16_t*>(outData.data()), width, height, mTmpBuffer.data(), mTmpBuffer.size()) <= 0)
+            if(raw::Decode(reinterpret_cast<uint16_t*>(outData.data()), width, height, encodedData.data(), encodedData.size()) <= 0)
                 throw IOException("Failed to uncompress frame");
         }
         else if(compressionType == MOTIONCAM_COMPRESSION_TYPE_LEGACY) {
-            if(raw::DecodeLegacy(reinterpret_cast<uint16_t*>(outData.data()), width, height, mTmpBuffer.data(), mTmpBuffer.size()) <= 0)
+            if(raw::DecodeLegacy(reinterpret_cast<uint16_t*>(outData.data()), width, height, encodedData.data(), encodedData.size()) <= 0)
                 throw IOException("Failed to uncompress legacy frame");
         }
         else {
             throw IOException("Invalid compression type");
         }
+        encodedData.swap(mTmpBuffer);
     }
 
     void Decoder::loadFrameMetadata(const Timestamp timestamp, nlohmann::json& outMetadata) {
@@ -311,10 +415,10 @@ namespace motioncam {
     }
     
     void Decoder::readExtra() {
-        if(mOffsets.empty())
-            return;
-        
-        auto curOffset = mOffsets[mOffsets.size() - 1].offset;
+        const auto finalFrame = std::max_element(mOffsets.begin(), mOffsets.end(), [](const auto& a, const auto& b) {
+            return a.offset < b.offset;
+        });
+        const int64_t curOffset = finalFrame == mOffsets.end() ? mBufferStartOffset : finalFrame->offset;
 
         if(FSEEK(mFile, curOffset, SEEK_SET) != 0)
             return;
@@ -326,7 +430,9 @@ namespace motioncam {
                 break;
             
             // Skip things we don't need
-            if(item.type == Type::BUFFER || item.type == Type::METADATA || item.type == Type::AUDIO_DATA || item.type == Type::AUDIO_DATA_METADATA) {
+            if(item.type == Type::BUFFER || item.type == Type::METADATA || item.type == Type::AUDIO_DATA
+                || item.type == Type::AUDIO_DATA_METADATA || item.type == Type::AUDIO_DATA_F32
+                || item.type == Type::GYRO_DATA) {
                 if(FSEEK(mFile, item.size, SEEK_CUR) != 0)
                     break;
             }
@@ -340,10 +446,68 @@ namespace motioncam {
                 
                 read(mAudioOffsets.data(), sizeof(BufferOffset), mAudioOffsets.size());
             }
+            else if(item.type == Type::GYRO_INDEX) {
+                readGyroIndex(item.size);
+            }
+            else if(item.type == Type::ACCELEROMETER_INDEX) {
+                readAccelerometerIndex(item.size);
+            }
+            else if(item.type == Type::ACCELEROMETER_DATA || item.type == Type::OIS_DATA
+                || item.type == Type::OIS_INDEX) {
+                // OIS items can precede the accelerometer index in the tail.
+                // Skip their payloads without interpreting or allocating them.
+                if(!payloadFitsInFile(item.size) || FSEEK(mFile, item.size, SEEK_CUR) != 0)
+                    throw IOException("Invalid motion data payload");
+            }
             else {
                 break;
             }
         }
+    }
+
+    void Decoder::readGyroIndex(const uint32_t itemSize) {
+        if(itemSize < sizeof(GyroIndex) || !payloadFitsInFile(itemSize))
+            throw IOException("Invalid gyro index");
+
+        GyroIndex index{};
+        read(&index, sizeof(GyroIndex));
+
+        const uint64_t expectedSize = sizeof(GyroIndex)
+            + static_cast<uint64_t>(index.numOffsets) * sizeof(BufferOffset);
+        const uint64_t maxOffsets = static_cast<uint64_t>(mOffsets.size()) + 1;
+        if(index.version != GYRO_INDEX_VERSION || expectedSize != itemSize || index.numOffsets > maxOffsets)
+            throw IOException("Invalid gyro index");
+
+        mGyroOffsets.resize(index.numOffsets);
+        read(mGyroOffsets.data(), sizeof(BufferOffset), mGyroOffsets.size());
+    }
+
+    void Decoder::readAccelerometerIndex(const uint32_t itemSize) {
+        if(itemSize < sizeof(AccelerometerIndex) || !payloadFitsInFile(itemSize))
+            throw IOException("Invalid accelerometer index");
+
+        AccelerometerIndex index{};
+        read(&index, sizeof(AccelerometerIndex));
+
+        const uint64_t expectedSize = sizeof(AccelerometerIndex)
+            + static_cast<uint64_t>(index.numOffsets) * sizeof(BufferOffset);
+        const uint64_t maxOffsets = static_cast<uint64_t>(mOffsets.size()) + 1;
+        if(index.version != ACCELEROMETER_INDEX_VERSION || expectedSize != itemSize || index.numOffsets > maxOffsets)
+            throw IOException("Invalid accelerometer index");
+
+        mAccelerometerOffsets.resize(index.numOffsets);
+        read(mAccelerometerOffsets.data(), sizeof(BufferOffset), mAccelerometerOffsets.size());
+    }
+
+    bool Decoder::payloadFitsInFile(const uint32_t itemSize) const {
+        const int64_t payloadOffset = FTELL(mFile);
+        if(payloadOffset < 0 || FSEEK(mFile, 0, SEEK_END) != 0)
+            return false;
+
+        const int64_t fileSize = FTELL(mFile);
+        const bool restored = FSEEK(mFile, payloadOffset, SEEK_SET) == 0;
+        return restored && fileSize >= payloadOffset
+            && static_cast<uint64_t>(itemSize) <= static_cast<uint64_t>(fileSize - payloadOffset);
     }
     
     void Decoder::read(void* data, size_t size, size_t items) const {

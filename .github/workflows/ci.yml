@@ -1,0 +1,38 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Build with Gradle
+      working-directory: MotionCam-Android
+      run: ./gradlew assembleDebug
+
+    - name: Run C++ decoder tests
+      run: |
+        cmake -S reference/motioncam-decoder -B build_decoder -DBUILD_TESTING=ON
+        cmake --build build_decoder
+        ctest --test-dir build_decoder --output-on-failure
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: motioncam-debug-apk
+        path: MotionCam-Android/MotionCam/build/outputs/apk/debug/*.apk

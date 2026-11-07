@@ -125,133 +125,99 @@ set_target_properties(zstd PROPERTIES IMPORTED_LOCATION
 # Halide libraries
 #
 
-add_library(camera_preview2_raw10 STATIC IMPORTED)
-set_target_properties(camera_preview2_raw10 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw10.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(camera_preview3_raw10 STATIC IMPORTED)
-set_target_properties(camera_preview3_raw10 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw10.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(camera_preview4_raw10 STATIC IMPORTED)
-set_target_properties(camera_preview4_raw10 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw10.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(camera_preview2_raw16 STATIC IMPORTED)
-set_target_properties(camera_preview2_raw16 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw16.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(camera_preview3_raw16 STATIC IMPORTED)
-set_target_properties(camera_preview3_raw16 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw16.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(camera_preview4_raw16 STATIC IMPORTED)
-set_target_properties(camera_preview4_raw16 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw16.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(hdr_mask STATIC IMPORTED)
-set_target_properties(hdr_mask PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/hdr_mask.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(linear_image STATIC IMPORTED)
-set_target_properties(linear_image PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/linear_image.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(generate_edges STATIC IMPORTED)
-set_target_properties(generate_edges PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/generate_edges.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(measure_image STATIC IMPORTED)
-set_target_properties(measure_image PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/measure_image.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(deinterleave_raw STATIC IMPORTED)
-set_target_properties(deinterleave_raw PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/deinterleave_raw.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
 #
 
-add_library(preview_portrait2 STATIC IMPORTED)
-set_target_properties(preview_portrait2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_portrait2.a)
+add_library(2 STATIC IMPORTED)
+set_target_properties(2 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_landscape2 STATIC IMPORTED)
-set_target_properties(preview_landscape2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_landscape2.a)
+add_library(2 STATIC IMPORTED)
+set_target_properties(2 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_portrait2 STATIC IMPORTED)
-set_target_properties(preview_reverse_portrait2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_portrait2.a)
+add_library(2 STATIC IMPORTED)
+set_target_properties(2 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_landscape2 STATIC IMPORTED)
-set_target_properties(preview_reverse_landscape2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_landscape2.a)
+add_library(2 STATIC IMPORTED)
+set_target_properties(2 PROPERTIES IMPORTED_LOCATION
 
 #
 
-add_library(preview_portrait4 STATIC IMPORTED)
-set_target_properties(preview_portrait4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_portrait4.a)
+add_library(4 STATIC IMPORTED)
+set_target_properties(4 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_landscape4 STATIC IMPORTED)
-set_target_properties(preview_landscape4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_landscape4.a)
+add_library(4 STATIC IMPORTED)
+set_target_properties(4 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_portrait4 STATIC IMPORTED)
-set_target_properties(preview_reverse_portrait4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_portrait4.a)
+add_library(4 STATIC IMPORTED)
+set_target_properties(4 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_landscape4 STATIC IMPORTED)
-set_target_properties(preview_reverse_landscape4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_landscape4.a)
+add_library(4 STATIC IMPORTED)
+set_target_properties(4 PROPERTIES IMPORTED_LOCATION
 
 #
 
-add_library(preview_portrait8 STATIC IMPORTED)
-set_target_properties(preview_portrait8 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_portrait8.a)
+add_library(8 STATIC IMPORTED)
+set_target_properties(8 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_landscape8 STATIC IMPORTED)
-set_target_properties(preview_landscape8 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_landscape8.a)
+add_library(8 STATIC IMPORTED)
+set_target_properties(8 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_portrait8 STATIC IMPORTED)
-set_target_properties(preview_reverse_portrait8 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_portrait8.a)
+add_library(8 STATIC IMPORTED)
+set_target_properties(8 PROPERTIES IMPORTED_LOCATION
 
-add_library(preview_reverse_landscape8 STATIC IMPORTED)
-set_target_properties(preview_reverse_landscape8 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/preview_reverse_landscape8.a)
+add_library(8 STATIC IMPORTED)
+set_target_properties(8 PROPERTIES IMPORTED_LOCATION
 
 #
 
 add_library(postprocess STATIC IMPORTED)
 set_target_properties(postprocess PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/postprocess.a)
 
-add_library(fuse_denoise STATIC IMPORTED)
-set_target_properties(fuse_denoise PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/fuse_denoise.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(forward_transform STATIC IMPORTED)
-set_target_properties(forward_transform PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/forward_transform.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
-add_library(fuse_image STATIC IMPORTED)
-set_target_properties(fuse_image PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/fuse_image.a)
+add_library( STATIC IMPORTED)
+set_target_properties( PROPERTIES IMPORTED_LOCATION
 
 add_library(inverse_transform STATIC IMPORTED)
 set_target_properties(inverse_transform PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/inverse_transform.a)
 
-add_library(halide_runtime_host STATIC IMPORTED)
-set_target_properties(halide_runtime_host PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/halide_runtime_host.a)
 
-add_library(halide_runtime_opencl STATIC IMPORTED)
-set_target_properties(halide_runtime_opencl PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/halide_runtime_opencl.a)
 
 #
 # OpenCV
@@ -372,10 +338,8 @@ add_library( # Sets the name of the library.
 # Include directories
 target_include_directories(motion-cam PUBLIC
         ${libmotioncam-src}/include
-        ${libmotioncam-src}/halide/${ANDROID_ABI}
         ${thirdparty-libs}/json11
         ${thirdparty-libs}/miniz
-        ${thirdparty-libs}/halide/include
         ${thirdparty-libs}/opencl
         ${thirdparty-libs}/queue
         ${thirdparty-libs}/atomic_queue
@@ -450,27 +414,27 @@ set(native-camera-libs
         libexpat
 
         # Halide libraries
-        hdr_mask
-        linear_image
-        generate_edges
-        measure_image
-        deinterleave_raw
-        preview_portrait2
-        preview_reverse_portrait2
-        preview_landscape2
-        preview_reverse_landscape2
-        preview_portrait4
-        preview_reverse_portrait4
-        preview_landscape4
-        preview_reverse_landscape4
-        preview_portrait8
-        preview_reverse_portrait8
-        preview_landscape8
-        preview_reverse_landscape8
+
+
+
+
+
+        2
+        2
+        2
+        2
+        4
+        4
+        4
+        4
+        8
+        8
+        8
+        8
         postprocess
-        fuse_denoise
-        forward_transform
-        fuse_image
+
+
+
         inverse_transform
 
         # Thirdparty libraries
@@ -508,17 +472,15 @@ set(native-camera-libs
 
 
 target_link_libraries(native-camera-host
-        halide_runtime_host
         ${native-camera-libs}
 )
 
 target_link_libraries(native-camera-opencl
-        halide_runtime_opencl
         ${native-camera-libs}
-        camera_preview2_raw10
-        camera_preview3_raw10
-        camera_preview4_raw10
-        camera_preview2_raw16
-        camera_preview3_raw16
-        camera_preview4_raw16
+
+
+
+
+
+
 )
