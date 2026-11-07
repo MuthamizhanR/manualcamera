@@ -1,0 +1,249 @@
+/*
+ * Copyright (C) 2023 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.ui
+
+import android.net.Uri
+import android.os.Build
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.EaseIn
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.jetpackcamera.BuildConfig
+import com.google.jetpackcamera.feature.postcapture.PostCaptureScreen
+import com.google.jetpackcamera.feature.preview.navigation.navigateToPreview
+import com.google.jetpackcamera.feature.preview.navigation.previewScreen
+import com.google.jetpackcamera.model.CaptureEvent
+import com.google.jetpackcamera.model.DebugSettings
+import com.google.jetpackcamera.model.ExternalCaptureMode
+import com.google.jetpackcamera.permissions.navigation.PermissionsRoute
+import com.google.jetpackcamera.permissions.navigation.isPermissionsRoute
+import com.google.jetpackcamera.permissions.navigation.navigateToPermissions
+import com.google.jetpackcamera.permissions.navigation.permissionsScreen
+import com.google.jetpackcamera.permissions.navigation.popUpToPermissions
+import com.google.jetpackcamera.settings.DefaultCameraSettings
+import com.google.jetpackcamera.settings.SettingsScreen
+import com.google.jetpackcamera.settings.VersionInfoHolder
+import com.google.jetpackcamera.ui.Routes.POST_CAPTURE_ROUTE
+import com.google.jetpackcamera.ui.Routes.SETTINGS_ROUTE
+
+@Composable
+fun JcaApp(
+    externalCaptureMode: ExternalCaptureMode,
+    shouldReviewAfterCapture: Boolean,
+    captureUris: List<Uri>,
+    debugSettings: DebugSettings,
+    onRequestWindowColorMode: (Int) -> Unit,
+    onFirstFrameCaptureCompleted: () -> Unit,
+    openAppSettings: () -> Unit,
+    onStoragePermissionGranted: () -> Unit,
+    onCaptureEvent: (CaptureEvent) -> Unit,
+    modifier: Modifier = Modifier,
+    isDarkTheme: Boolean = true,
+    onCloseCamera: () -> Unit = {}
+) {
+    JetpackCameraNavHost(
+        modifier = modifier,
+        externalCaptureMode = externalCaptureMode,
+        shouldReviewAfterCapture = shouldReviewAfterCapture,
+        captureUris = captureUris,
+        debugSettings = debugSettings,
+        onOpenAppSettings = openAppSettings,
+        onStoragePermissionGranted = onStoragePermissionGranted,
+        onRequestWindowColorMode = onRequestWindowColorMode,
+        onFirstFrameCaptureCompleted = onFirstFrameCaptureCompleted,
+        onCaptureEvent = onCaptureEvent,
+        isDarkTheme = isDarkTheme,
+        onCloseCamera = onCloseCamera
+    )
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun JetpackCameraNavHost(
+    modifier: Modifier = Modifier,
+    externalCaptureMode: ExternalCaptureMode,
+    shouldReviewAfterCapture: Boolean,
+    captureUris: List<Uri>,
+    debugSettings: DebugSettings,
+    onOpenAppSettings: () -> Unit,
+    onStoragePermissionGranted: () -> Unit,
+    onRequestWindowColorMode: (Int) -> Unit,
+    onFirstFrameCaptureCompleted: () -> Unit,
+    onCaptureEvent: (CaptureEvent) -> Unit,
+    isDarkTheme: Boolean = true,
+    onCloseCamera: () -> Unit = {},
+    navController: NavHostController = rememberNavController()
+) {
+    // A single owner for system bar visibility, driven by the destination that is currently on top
+    // of the back stack. This must live above the NavHost: during a transition both the outgoing
+    // and the incoming destination are composed, so a per-screen effect would let the outgoing
+    // screen's cleanup run last and undo the incoming screen's request.
+    // The preview screen's layout reports when the window is too short for the navigation bar to
+    // stay visible. The report is only applied while the preview destination is on top, so it
+    // stays owned by this policy rather than by the screen.
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    var previewRequiresImmersive by remember { mutableStateOf(false) }
+    SystemBarsPolicyEffect(
+        systemBarsPolicyFor(backStackEntry?.destination?.route, previewRequiresImmersive),
+        isDarkTheme = isDarkTheme
+    )
+
+    CameraPermissionGuard(navController)
+    StoragePermissionGuard(onStoragePermissionGranted)
+
+    NavHost(
+        navController = navController,
+        startDestination = PermissionsRoute.toString(),
+        modifier = modifier
+    ) {
+        val requestablePermissions = buildList {
+            add(android.Manifest.permission.CAMERA)
+            if (externalCaptureMode == ExternalCaptureMode.Standard) {
+                add(android.Manifest.permission.RECORD_AUDIO)
+                add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                    add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }
+            }
+        }
+        permissionsScreen(
+            requestablePermissions = requestablePermissions,
+            onAllPermissionsGranted = {
+                navController.navigateToPreview {
+                    popUpToPermissions()
+                }
+            },
+            onOpenAppSettings = onOpenAppSettings
+        )
+
+        previewScreen(
+            externalCaptureMode = externalCaptureMode,
+            shouldCacheReview = shouldReviewAfterCapture,
+            captureUris = captureUris,
+            debugSettings = debugSettings,
+            onRequestWindowColorMode = onRequestWindowColorMode,
+            onFirstFrameCaptureCompleted = onFirstFrameCaptureCompleted,
+            onNavigateToSettings = { navController.navigate(SETTINGS_ROUTE) },
+            onNavigateToPostCapture = { navController.navigate(POST_CAPTURE_ROUTE) },
+            onCaptureEvent = onCaptureEvent,
+            onCloseCamera = onCloseCamera,
+            onRequiresImmersiveChange = { previewRequiresImmersive = it }
+        )
+
+        composable(
+            route = SETTINGS_ROUTE,
+            enterTransition = {
+                fadeIn(
+                    animationSpec = tween(easing = LinearEasing)
+                ) + slideIntoContainer(
+                    animationSpec = tween(easing = EaseIn),
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    animationSpec = tween(easing = EaseOut),
+                    towards = AnimatedContentTransitionScope.SlideDirection.End
+                )
+            }
+        ) {
+            SettingsScreen(
+                versionInfo = VersionInfoHolder(
+                    versionName = BuildConfig.VERSION_NAME,
+                    buildType = BuildConfig.BUILD_TYPE
+                ),
+                onNavigateBack = { navController.popBackStack() },
+                onOpenAppSettings = onOpenAppSettings,
+                cameraSettingsSlot = {
+                    DefaultCameraSettings(
+                        customEffectSlot = {
+                            JcaEffectsSetting()
+                        }
+                    )
+                }
+            )
+        }
+
+        composable(
+            POST_CAPTURE_ROUTE
+        ) {
+            PostCaptureScreen(onNavigateBack = { navController.popBackStack() })
+        }
+    }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun CameraPermissionGuard(navController: NavHostController) {
+    val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
+    val currentDestination = navController.currentBackStackEntryAsState().value?.destination
+
+    // Automatically navigate to permissions screen when camera permission revoked
+    LaunchedEffect(cameraPermissionState.status, currentDestination) {
+        if (currentDestination?.isPermissionsRoute() == false &&
+            !cameraPermissionState.status.isGranted
+        ) {
+            navController.navigateToPermissions {
+                popUpTo(navController.graph.id) {
+                    inclusive = true
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Invokes [onStoragePermissionGranted] whenever storage permission becomes granted on API levels
+ * that require it to read the MediaStore (<= P).
+ *
+ * Unlike [CameraPermissionGuard], this does not navigate. Storage permission is optional, but the
+ * MediaStore does not send a change notification when permission is granted, so data that was
+ * queried before the grant (e.g. the last captured media) must be refreshed explicitly.
+ */
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun StoragePermissionGuard(onStoragePermissionGranted: () -> Unit) {
+    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) return
+
+    val storagePermissionState =
+        rememberPermissionState(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    val currentOnStoragePermissionGranted by rememberUpdatedState(onStoragePermissionGranted)
+
+    LaunchedEffect(storagePermissionState.status) {
+        if (storagePermissionState.status.isGranted) {
+            currentOnStoragePermissionGranted()
+        }
+    }
+}

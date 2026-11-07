@@ -1,0 +1,126 @@
+/*
+ * Copyright (C) 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.di
+
+import android.app.Application
+import android.content.Context
+import com.google.jetpackcamera.core.camera.CameraEffectProvider
+import com.google.jetpackcamera.core.camera.CameraXCameraSystem
+import com.google.jetpackcamera.core.camera.effects.CameraEffectFeatureKey
+import com.google.jetpackcamera.core.camera.lowlight.LowLightBoostAvailabilityChecker
+import com.google.jetpackcamera.core.camera.lowlight.LowLightBoostEffectProvider
+import com.google.jetpackcamera.core.camera.lowlight.LowLightBoostFeatureKey
+import com.google.jetpackcamera.core.camera.postprocess.ImagePostProcessor
+import com.google.jetpackcamera.core.camera.postprocess.ImagePostProcessorFeatureKey
+import com.google.jetpackcamera.core.camera.submode.CaptureSubModeFeatureKey
+import com.google.jetpackcamera.core.camera.submode.CaptureSubModeProvider
+import com.google.jetpackcamera.core.common.FilePathGenerator
+import com.google.jetpackcamera.data.camera.CameraLaunchConfigProvider
+import com.google.jetpackcamera.data.camera.CameraSystemRepository
+import com.google.jetpackcamera.data.camera.CameraXCameraSystemRepository
+import com.google.jetpackcamera.model.CaptureMode
+import com.google.jetpackcamera.settings.ConstraintsRepository
+import com.google.jetpackcamera.settings.SettingsRepository
+import com.google.jetpackcamera.settings.model.CameraFeaturePolicy
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.components.ActivityRetainedComponent
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.android.scopes.ActivityRetainedScoped
+import javax.inject.Provider
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+
+/**
+ * Dagger [Module] for camera dependencies.
+ */
+@Module
+@InstallIn(ActivityRetainedComponent::class)
+internal object CameraModule {
+
+    @Provides
+    @ActivityRetainedScoped
+    fun providesCameraXCameraSystemRepository(
+        cameraXCameraSystemProvider: Provider<CameraXCameraSystem>,
+        settingsRepository: SettingsRepository,
+        launchConfigProvider: CameraLaunchConfigProvider,
+        @DefaultCoroutineScope scope: CoroutineScope
+    ): CameraXCameraSystemRepository = CameraXCameraSystemRepository(
+        cameraXCameraSystemProvider = cameraXCameraSystemProvider,
+        settingsRepository = settingsRepository,
+        launchConfigProvider = launchConfigProvider,
+        scope = scope
+    )
+
+    @Provides
+    fun providesCameraSystemRepository(
+        repository: CameraXCameraSystemRepository
+    ): CameraSystemRepository = repository
+
+    @Provides
+    fun providesConstraintsRepository(
+        repository: CameraXCameraSystemRepository
+    ): ConstraintsRepository = repository
+
+    @Provides
+    @ActivityRetainedScoped
+    fun providesCameraXCameraSystem(
+        @ApplicationContext context: Context,
+        @DefaultDispatcher defaultDispatcher: CoroutineDispatcher,
+        @IODispatcher ioDispatcher: CoroutineDispatcher,
+        filePathGenerator: FilePathGenerator,
+        availabilityCheckers: Map<
+            LowLightBoostFeatureKey,
+            @JvmSuppressWildcards Provider<LowLightBoostAvailabilityChecker>
+            >,
+        effectProviders: Map<
+            LowLightBoostFeatureKey,
+            @JvmSuppressWildcards Provider<LowLightBoostEffectProvider>
+            >,
+        imagePostProcessors: Map<
+            ImagePostProcessorFeatureKey,
+            @JvmSuppressWildcards Provider<ImagePostProcessor>
+            >,
+        cameraEffectProviders: Map<
+            CameraEffectFeatureKey,
+            @JvmSuppressWildcards Provider<CameraEffectProvider>
+            >,
+        captureSubModeProviders: Map<
+            CaptureSubModeFeatureKey,
+            @JvmSuppressWildcards Provider<CaptureSubModeProvider>
+            >,
+        defaultCaptureSubModes: Map<
+            CaptureMode,
+            @JvmSuppressWildcards CaptureSubModeFeatureKey
+            >,
+        cameraFeaturePolicy: CameraFeaturePolicy
+    ): CameraXCameraSystem {
+        return CameraXCameraSystem(
+            context as Application,
+            defaultDispatcher,
+            ioDispatcher,
+            filePathGenerator,
+            availabilityCheckers,
+            effectProviders,
+            imagePostProcessors,
+            cameraEffectProviders,
+            captureSubModeProviders,
+            defaultCaptureSubModes,
+            cameraFeaturePolicy
+        )
+    }
+}

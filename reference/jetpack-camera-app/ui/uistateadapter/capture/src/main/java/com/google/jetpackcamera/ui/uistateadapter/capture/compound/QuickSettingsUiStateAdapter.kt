@@ -1,0 +1,63 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.ui.uistateadapter.capture.compound
+
+import com.google.jetpackcamera.ui.uistate.capture.AspectRatioUiState
+import com.google.jetpackcamera.ui.uistate.capture.CaptureModeUiState
+import com.google.jetpackcamera.ui.uistate.capture.FlashModeUiState
+import com.google.jetpackcamera.ui.uistate.capture.FlipLensUiState
+import com.google.jetpackcamera.ui.uistate.capture.HdrUiState
+import com.google.jetpackcamera.ui.uistate.capture.compound.QuickSettingsUiState
+
+/**
+ * Creates a [QuickSettingsUiState] from various UI states and settings.
+ *
+ * This function acts as a factory to consolidate multiple independent states into a single state
+ * object for the quick settings UI.
+ *
+ * @param captureModeUiState The UI state for the capture mode (e.g., photo, video).
+ * @param flashModeUiState The UI state for the flash mode.
+ * @param flipLensUiState The UI state for the flip lens button.
+ * @param aspectRatioUiState The UI state for the aspect ratio setting.
+ * @param hdrUiState The UI state for the HDR setting.
+ * @param titleResId Optional string resource ID overriding the sheet title (e.g. provided by the
+ * active capture sub-mode), or `null` to derive the title from the selected capture mode.
+ * @return A [QuickSettingsUiState.Available] instance containing the consolidated states.
+ */
+// TODO: Consider returning QuickSettingsUiState.Unavailable if all option rows (aspectRatio,
+//       captureMode, flashMode, hdr) are Unavailable due to policy restrictions or device constraints.
+//       In a follow-up, coordinate with PreviewScreen to support optional onNavigateToSettings:
+//       1. Has quick settings + onNavigateToSettings: open Quick Settings with "More settings".
+//       2. Has quick settings + no onNavigateToSettings: open Quick Settings without "More settings".
+//       3. No quick settings + onNavigateToSettings: skip bottom sheet and call onNavigateToSettings().
+//       4. No quick settings + no onNavigateToSettings: hide the button altogether.
+fun QuickSettingsUiState.Companion.from(
+    captureModeUiState: CaptureModeUiState,
+    flashModeUiState: FlashModeUiState,
+    flipLensUiState: FlipLensUiState,
+    aspectRatioUiState: AspectRatioUiState,
+    hdrUiState: HdrUiState,
+    titleResId: Int? = null
+): QuickSettingsUiState {
+    return QuickSettingsUiState.Available(
+        aspectRatioUiState = aspectRatioUiState,
+        captureModeUiState = captureModeUiState,
+        flashModeUiState = flashModeUiState,
+        flipLensUiState = flipLensUiState,
+        hdrUiState = hdrUiState,
+        titleResId = titleResId
+    )
+}

@@ -1,0 +1,117 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.data.media.testing
+
+import android.net.Uri
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
+import com.google.jetpackcamera.data.media.MediaRepository
+import com.google.jetpackcamera.model.Media
+import com.google.jetpackcamera.model.MediaDescriptor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+class FakeMediaRepository : MediaRepository {
+    private val _currentMedia = MutableStateFlow<MediaDescriptor>(MediaDescriptor.None)
+    override val currentMedia = _currentMedia.asStateFlow()
+
+    private val _lastCapturedMedia = MutableStateFlow<MediaDescriptor>(MediaDescriptor.None)
+    override val lastCapturedMedia: StateFlow<MediaDescriptor> = _lastCapturedMedia.asStateFlow()
+
+    var refreshLastCapturedMediaCount = 0
+        private set
+
+    override fun refreshLastCapturedMedia() {
+        refreshLastCapturedMediaCount++
+    }
+
+    var loadHandler: (MediaDescriptor) -> Media = { mediaDescriptor ->
+        when (mediaDescriptor) {
+            is MediaDescriptor.Content.Image -> Media.Image(
+                createBitmap(1, 1)
+            )
+            is MediaDescriptor.Content.Video -> Media.Video(mediaDescriptor.uri)
+            else -> Media.None
+        }
+    }
+    var saveToMediaStoreHandler: (MediaDescriptor.Content) -> Uri? = { mediaDescriptor ->
+        when (mediaDescriptor) {
+            is MediaDescriptor.Content.Image -> "img.jpg".toUri()
+            is MediaDescriptor.Content.Video -> "video.mp4".toUri()
+        }
+    }
+    var deleteMediaHandler: (MediaDescriptor.Content) -> Boolean = { true }
+
+    override fun setCurrentMedia(pendingMedia: MediaDescriptor) {
+        _currentMedia.update { pendingMedia }
+    }
+
+    override fun clearCurrentCachedMedia() {
+        val mediaDescriptor = currentMedia.value
+        if (mediaDescriptor is MediaDescriptor.Content && mediaDescriptor.isCached) {
+            deleteMediaHandler(mediaDescriptor)
+            _currentMedia.update { current ->
+                if (current == mediaDescriptor) _lastCapturedMedia.value else current
+            }
+        }
+    }
+
+    override suspend fun load(mediaDescriptor: MediaDescriptor): Media {
+        return loadHandler(mediaDescriptor)
+    }
+
+    override suspend fun deleteMedia(mediaDescriptor: MediaDescriptor.Content): Boolean {
+        val result = deleteMediaHandler(mediaDescriptor)
+        if (result) {
+            _currentMedia.update { current ->
+                if (current == mediaDescriptor) {
+                    if (mediaDescriptor.isCached) {
+                        _lastCapturedMedia.value
+                    } else {
+                        MediaDescriptor.None
+                    }
+                } else {
+                    current
+                }
+            }
+        }
+        return result
+    }
+
+    override suspend fun saveToMediaStore(
+        mediaDescriptor: MediaDescriptor.Content,
+        outputFilename: String?
+    ): Uri? {
+        return saveToMediaStoreHandler(mediaDescriptor)
+    }
+
+    override suspend fun copyToUri(mediaDescriptor: MediaDescriptor.Content, destinationUri: Uri) {
+    }
+
+    // Helper for testing
+    fun setLastCapturedMedia(mediaDescriptor: MediaDescriptor) {
+        _lastCapturedMedia.value = mediaDescriptor
+        _currentMedia.update { current ->
+            if ((current as? MediaDescriptor.Content)?.isCached == true) {
+                current
+            } else {
+                mediaDescriptor
+            }
+        }
+    }
+}

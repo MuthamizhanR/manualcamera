@@ -1,0 +1,141 @@
+/*
+ * Copyright (C) 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.data.camera
+
+import android.util.Log
+import androidx.camera.core.SurfaceRequest
+import com.google.jetpackcamera.core.camera.CameraState
+import com.google.jetpackcamera.core.camera.CameraSystem
+import com.google.jetpackcamera.core.camera.CameraXCameraSystem
+import com.google.jetpackcamera.model.CaptureSubModeId
+import com.google.jetpackcamera.settings.ConstraintsRepository
+import com.google.jetpackcamera.settings.SettingsRepository
+import com.google.jetpackcamera.settings.model.CameraAppSettings
+import com.google.jetpackcamera.settings.model.CameraSystemConstraints
+import com.google.jetpackcamera.settings.model.applyExternalCaptureMode
+import com.google.jetpackcamera.settings.model.getSupportedMimeTypes
+import javax.inject.Provider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+
+private const val TAG = "CameraXCameraSystemRepo"
+
+/**
+ * Implementation of [CameraSystemRepository] and [ConstraintsRepository] that manages
+ * [CameraXCameraSystem] initialization and exposes camera streams.
+ */
+class CameraXCameraSystemRepository(
+    private val cameraXCameraSystemProvider: Provider<out CameraSystem>,
+    private val settingsRepository: SettingsRepository,
+    private val launchConfigProvider: CameraLaunchConfigProvider,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+) : CameraSystemRepository, ConstraintsRepository {
+
+    constructor(
+        cameraXCameraSystemProvider: Provider<out CameraSystem>,
+        settingsRepository: SettingsRepository,
+        launchConfig: CameraLaunchConfig = CameraLaunchConfig(),
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    ) : this(
+        cameraXCameraSystemProvider = cameraXCameraSystemProvider,
+        settingsRepository = settingsRepository,
+        launchConfigProvider = CameraLaunchConfigProvider().apply { setConfig(launchConfig) },
+        scope = scope
+    )
+
+    private val cameraSystem: CameraSystem by lazy {
+        cameraXCameraSystemProvider.get()
+    }
+
+    private val _cameraPropertiesJSON = MutableStateFlow<String?>(null)
+    override val cameraPropertiesJSON: StateFlow<String?> = _cameraPropertiesJSON.asStateFlow()
+
+    private val initializationDeferred: Deferred<CameraAppSettings> =
+        scope.async(start = CoroutineStart.LAZY) {
+            val launchConfig = launchConfigProvider.config.value
+            val defaultSettings = settingsRepository.getCurrentDefaultCameraAppSettings()
+            val initialSettings = defaultSettings
+                .applyExternalCaptureMode(launchConfig.externalCaptureMode)
+                .copy(debugSettings = launchConfig.debugSettings)
+            cameraSystem.initialize(
+                initialSettings,
+                launchConfig.externalCaptureMode
+            ) { properties ->
+                _cameraPropertiesJSON.value = properties
+            }
+            defaultSettings
+        }.also { deferred ->
+            // Log failures that nothing observes through await()
+            deferred.invokeOnCompletion { cause ->
+                if (cause != null && cause !is CancellationException) {
+                    Log.e(TAG, "Failed to initialize camera system", cause)
+                }
+            }
+        }
+
+    override val surfaceRequest: StateFlow<SurfaceRequest?> by lazy {
+        cameraSystem.getSurfaceRequest()
+    }
+
+    override val systemConstraints: StateFlow<CameraSystemConstraints?> by lazy {
+        initializationDeferred.start()
+        cameraSystem.getSystemConstraints()
+    }
+
+    override val currentSettings: StateFlow<CameraAppSettings?> by lazy {
+        cameraSystem.getCurrentSettings()
+    }
+
+    override val activeCaptureSubModeId: Flow<CaptureSubModeId> by lazy {
+        currentSettings
+            .map { it.activeCaptureSubModeIdOrDefault() }
+            .distinctUntilChanged()
+    }
+
+    override val currentCameraState: StateFlow<CameraState> by lazy {
+        cameraSystem.getCurrentCameraState()
+    }
+
+    override suspend fun getCameraSystem(): CameraSystem {
+        initializationDeferred.await()
+        return cameraSystem
+    }
+
+    override suspend fun getInitialDefaultCameraAppSettings(): CameraAppSettings =
+        initializationDeferred.await()
+
+    override suspend fun getSupportedMimeTypes(): List<String> {
+        initializationDeferred.await()
+        val constraints = systemConstraints.filterNotNull().first()
+        return constraints.getSupportedMimeTypes().values.flatten().distinct()
+    }
+}
+
+private fun CameraAppSettings?.activeCaptureSubModeIdOrDefault(): CaptureSubModeId =
+    this?.activeCaptureSubModeId ?: CaptureSubModeId.DEFAULT

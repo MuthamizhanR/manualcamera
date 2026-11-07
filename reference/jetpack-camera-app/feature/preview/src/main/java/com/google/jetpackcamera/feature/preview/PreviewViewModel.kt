@@ -1,0 +1,416 @@
+/*
+ * Copyright (C) 2023 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.feature.preview
+
+import android.net.Uri
+import android.util.Log
+import androidx.camera.core.SurfaceRequest
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.jetpackcamera.core.camera.CameraSystem.Companion.applyDiffs
+import com.google.jetpackcamera.core.camera.CaptureSubModeState
+import com.google.jetpackcamera.core.camera.VideoRecordingState
+import com.google.jetpackcamera.core.location.LocationProvider
+import com.google.jetpackcamera.data.camera.CameraSystemRepository
+import com.google.jetpackcamera.data.media.MediaRepository
+import com.google.jetpackcamera.feature.preview.navigation.getCaptureUris
+import com.google.jetpackcamera.feature.preview.navigation.getDebugSettings
+import com.google.jetpackcamera.feature.preview.navigation.getExternalCaptureMode
+import com.google.jetpackcamera.feature.preview.navigation.getRequestedSaveMode
+import com.google.jetpackcamera.model.CaptureEvent
+import com.google.jetpackcamera.model.DebugSettings
+import com.google.jetpackcamera.model.ExternalCaptureMode
+import com.google.jetpackcamera.model.ImageCaptureEvent
+import com.google.jetpackcamera.model.IntProgress
+import com.google.jetpackcamera.model.LowLightBoostState
+import com.google.jetpackcamera.model.MediaDescriptor
+import com.google.jetpackcamera.model.SaveLocation
+import com.google.jetpackcamera.model.SaveMode
+import com.google.jetpackcamera.model.VideoCaptureEvent
+import com.google.jetpackcamera.settings.SettingsRepository
+import com.google.jetpackcamera.settings.model.CameraAppSettings
+import com.google.jetpackcamera.settings.model.CameraFeaturePolicy
+import com.google.jetpackcamera.ui.components.capture.R
+import com.google.jetpackcamera.ui.controller.CameraController
+import com.google.jetpackcamera.ui.controller.CaptureController
+import com.google.jetpackcamera.ui.controller.ScreenFlashController
+import com.google.jetpackcamera.ui.controller.SnackBarController
+import com.google.jetpackcamera.ui.controller.ZoomController
+import com.google.jetpackcamera.ui.controller.impl.CameraControllerImpl
+import com.google.jetpackcamera.ui.controller.impl.CaptureControllerImpl
+import com.google.jetpackcamera.ui.controller.impl.QuickSettingsControllerImpl
+import com.google.jetpackcamera.ui.controller.impl.ScreenFlashControllerImpl
+import com.google.jetpackcamera.ui.controller.impl.SnackBarControllerImpl
+import com.google.jetpackcamera.ui.controller.impl.ZoomControllerImpl
+import com.google.jetpackcamera.ui.controller.quicksettings.QuickSettingsController
+import com.google.jetpackcamera.ui.debug.DebugController
+import com.google.jetpackcamera.ui.debug.DebugControllerImpl
+import com.google.jetpackcamera.ui.debug.DebugUiState
+import com.google.jetpackcamera.ui.debug.debugUiState
+import com.google.jetpackcamera.ui.uistate.SnackBarUiState
+import com.google.jetpackcamera.ui.uistate.SnackbarData
+import com.google.jetpackcamera.ui.uistate.capture.TrackedCaptureUiState
+import com.google.jetpackcamera.ui.uistate.capture.compound.CaptureUiState
+import com.google.jetpackcamera.ui.uistateadapter.capture.R as StateAdapterR
+import com.google.jetpackcamera.ui.uistateadapter.capture.compound.captureUiState
+import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Optional
+import javax.inject.Inject
+import kotlin.jvm.optionals.getOrNull
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+private const val TAG = "PreviewViewModel"
+
+/**
+ * [ViewModel] for [PreviewScreen].
+ */
+@HiltViewModel
+class PreviewViewModel @Inject constructor(
+    private val cameraSystemRepository: CameraSystemRepository,
+    private val savedStateHandle: SavedStateHandle,
+    private val defaultSaveMode: SaveMode,
+    private val cameraFeaturePolicy: CameraFeaturePolicy = CameraFeaturePolicy(),
+    private val settingsRepository: SettingsRepository,
+    private val mediaRepository: MediaRepository,
+    private val locationProvider: Optional<LocationProvider>
+) : ViewModel() {
+    private val saveMode: SaveMode = savedStateHandle.getRequestedSaveMode() ?: defaultSaveMode
+    private val trackedCaptureUiState: MutableStateFlow<TrackedCaptureUiState> =
+        MutableStateFlow(TrackedCaptureUiState())
+    private val _snackBarUiState: MutableStateFlow<SnackBarUiState.Enabled> =
+        MutableStateFlow(SnackBarUiState.Enabled())
+    val snackBarUiState: StateFlow<SnackBarUiState.Enabled> =
+        _snackBarUiState.asStateFlow()
+
+    val surfaceRequest: StateFlow<SurfaceRequest?> =
+        cameraSystemRepository.surfaceRequest
+
+    private val outgoingCaptureEvents = Channel<CaptureEvent>(capacity = Channel.UNLIMITED)
+    val captureEvents: ReceiveChannel<CaptureEvent> = outgoingCaptureEvents
+    private val incomingCaptureEvents = Channel<CaptureEvent>(capacity = Channel.UNLIMITED)
+
+    private val externalCaptureMode: ExternalCaptureMode = savedStateHandle.getExternalCaptureMode()
+    private val externalUris: List<Uri> = savedStateHandle.getCaptureUris()
+    private lateinit var externalUriProgress: IntProgress
+
+    private val debugSettings: DebugSettings = savedStateHandle.getDebugSettings()
+
+    val screenFlashController: ScreenFlashController = ScreenFlashControllerImpl(
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        trackedCaptureUiState = trackedCaptureUiState,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    val captureUiState: StateFlow<CaptureUiState> = captureUiState(
+        currentSettings = cameraSystemRepository.currentSettings,
+        cameraFeaturePolicy = cameraFeaturePolicy,
+        systemConstraints = cameraSystemRepository.systemConstraints,
+        currentCameraState = cameraSystemRepository.currentCameraState,
+        trackedCaptureUiState = trackedCaptureUiState,
+        externalCaptureMode = externalCaptureMode
+    )
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = CaptureUiState.NotReady
+        )
+    val debugUiState: StateFlow<DebugUiState> = debugUiState(
+        currentSettings = cameraSystemRepository.currentSettings,
+        systemConstraints = cameraSystemRepository.systemConstraints,
+        currentCameraState = cameraSystemRepository.currentCameraState,
+        debugSettings = debugSettings,
+        cameraPropertiesJSON = cameraSystemRepository.cameraPropertiesJSON,
+        trackedCaptureUiState = trackedCaptureUiState
+    )
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = DebugUiState.Disabled
+        )
+
+    /**
+     * Controller for managing the quick settings UI panel and state.
+     */
+    val quickSettingsController: QuickSettingsController = QuickSettingsControllerImpl(
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    /**
+     * Controller for toggling and configuring debug features.
+     */
+    val debugController: DebugController = DebugControllerImpl(
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        trackedCaptureUiState = trackedCaptureUiState,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    /**
+     * Controller for posting messages to the transient snackbar.
+     */
+    val snackBarController: SnackBarController = SnackBarControllerImpl(
+        snackBarUiState = _snackBarUiState,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    /**
+     * Controller for managing zoom operations and animations.
+     */
+    val zoomController: ZoomController = ZoomControllerImpl(
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        trackedCaptureUiState = trackedCaptureUiState,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    val cameraController: CameraController = CameraControllerImpl(
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        captureUiState = captureUiState,
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    // Written only by the settings collector in init; read at capture time and by the location
+    // updates collector.
+    private val isLocationEnabled = MutableStateFlow(false)
+
+    val captureController: CaptureController = CaptureControllerImpl(
+        trackedCaptureUiState = trackedCaptureUiState,
+        cameraSystemProvider = cameraSystemRepository::getCameraSystem,
+        saveMode = saveMode,
+        externalCaptureMode = externalCaptureMode,
+        externalCapturesCallback = {
+            if (externalUris.isNotEmpty()) {
+                if (!this::externalUriProgress.isInitialized) {
+                    externalUriProgress = IntProgress(1, 1..externalUris.size)
+                }
+                val progress = externalUriProgress
+                if (progress.currentValue < progress.range.endInclusive) externalUriProgress++
+                Pair(
+                    SaveLocation.Explicit(externalUris[progress.currentValue - 1]),
+                    progress
+                )
+            } else {
+                Pair(SaveLocation.Default, null)
+            }
+        },
+        captureEvents = incomingCaptureEvents,
+        locationProvider = locationProvider.getOrNull()?.let { provider ->
+            object : LocationProvider {
+                override fun getCurrentLocation() =
+                    if (isLocationEnabled.value) provider.getCurrentLocation() else null
+
+                override suspend fun runLocationUpdates() {
+                    provider.runLocationUpdates()
+                }
+            }
+        },
+        onImageCached = { uri ->
+            mediaRepository.setCurrentMedia(
+                MediaDescriptor.Content.Image(uri, null, true)
+            )
+        },
+        onVideoCached = { uri ->
+            mediaRepository.setCurrentMedia(
+                MediaDescriptor.Content.Video(uri, null, true)
+            )
+        },
+        coroutineContext = viewModelScope.coroutineContext
+    )
+
+    private val isPreviewActive = MutableStateFlow(false)
+
+    /**
+     * Starts location updates so a recent fix is available at capture time.
+     *
+     * Called when the preview screen becomes visible. Safe no-op if no [LocationProvider] is bound,
+     * if location tagging is disabled in settings, or if video recording is active. Calling this
+     * while updates are already running has no effect; the current session continues.
+     */
+    fun startLocationUpdates() {
+        isPreviewActive.value = true
+    }
+
+    /**
+     * Stops active location updates and releases location hardware.
+     *
+     * Called when preview is paused or disposed to conserve battery. Safe no-op if no [LocationProvider] is bound.
+     */
+    fun stopLocationUpdates() {
+        isPreviewActive.value = false
+    }
+
+    /**
+     * Runs [provider] location updates while the preview is active, location tagging is enabled,
+     * and no video recording is active. A change to any of these cancels or restarts the session.
+     */
+    private suspend fun runLocationUpdatesWhileActive(provider: LocationProvider) {
+        val isRecording = cameraSystemRepository.currentCameraState.map {
+            it.videoRecordingState is VideoRecordingState.Active ||
+                it.videoRecordingState is VideoRecordingState.Starting
+        }
+        combine(isPreviewActive, isLocationEnabled, isRecording) { active, enabled, recording ->
+            active && enabled && !recording
+        }
+            .distinctUntilChanged()
+            .collectLatest { shouldRun ->
+                if (!shouldRun) return@collectLatest
+                try {
+                    provider.runLocationUpdates()
+                } catch (e: Exception) {
+                    // Location is optional metadata, so a provider failure is logged and must not
+                    // crash the camera. Rethrows if this session was cancelled. The session
+                    // restarts on the next change that re-enables it.
+                    currentCoroutineContext().ensureActive()
+                    Log.e(TAG, "Location updates failed", e)
+                }
+            }
+    }
+
+    init {
+        viewModelScope.launch {
+            launch {
+                var oldCameraAppSettings: CameraAppSettings =
+                    cameraSystemRepository.getInitialDefaultCameraAppSettings()
+                isLocationEnabled.value = oldCameraAppSettings.locationEnabled
+                settingsRepository.defaultCameraAppSettings
+                    .collect { new ->
+                        isLocationEnabled.value = new.locationEnabled
+                        oldCameraAppSettings.applyDiffs(
+                            new,
+                            cameraSystemRepository.getCameraSystem()
+                        )
+                        oldCameraAppSettings = new
+                    }
+            }
+
+            launch {
+                mediaRepository.lastCapturedMedia
+                    .collect { media ->
+                        trackedCaptureUiState.update { old ->
+                            old.copy(recentCapturedMedia = media)
+                        }
+                    }
+            }
+
+            launch {
+                cameraSystemRepository.currentCameraState
+                    .map { it.lowLightBoostState }
+                    .distinctUntilChanged()
+                    .collect { state ->
+                        if (state is LowLightBoostState.Error) {
+                            val cookieInt = snackBarController.incrementAndGetSnackBarCount()
+                            Log.d(TAG, "LowLightBoostState changed to Error #$cookieInt")
+                            snackBarController.addSnackBarData(
+                                SnackbarData(
+                                    cookie = "LowLightBoost-$cookieInt",
+                                    stringResource = R.string.low_light_boost_error_toast_message,
+                                    withDismissAction = true,
+                                    isError = true
+                                )
+                            )
+                        }
+                    }
+            }
+
+            launch {
+                cameraSystemRepository.currentCameraState
+                    .map { it.captureSubModeState }
+                    .distinctUntilChanged()
+                    .collect { state ->
+                        if (state is CaptureSubModeState.Error) {
+                            val cookieInt = snackBarController.incrementAndGetSnackBarCount()
+                            Log.d(TAG, "CaptureSubModeState changed to Error #$cookieInt")
+                            snackBarController.addSnackBarData(
+                                SnackbarData(
+                                    cookie = "CaptureSubMode-$cookieInt",
+                                    stringResource = R.string.capture_sub_mode_error_toast_message,
+                                    withDismissAction = true,
+                                    isError = true
+                                )
+                            )
+                        }
+                    }
+            }
+
+            launch {
+                for (event in captureController.captureEvents) {
+                    showSnackbarForCaptureEvent(event)
+                    outgoingCaptureEvents.send(event)
+                }
+            }
+
+            locationProvider.getOrNull()?.let { provider ->
+                launch { runLocationUpdatesWhileActive(provider) }
+            }
+        }
+    }
+
+    private fun showSnackbarForCaptureEvent(event: CaptureEvent) {
+        val snackbarInfo = when (event) {
+            is ImageCaptureEvent.ImageCaptureExternalUnsupported ->
+                StateAdapterR.string.toast_image_capture_external_unsupported to true
+
+            is VideoCaptureEvent.VideoCaptureExternalUnsupported ->
+                StateAdapterR.string.toast_video_capture_external_unsupported to true
+
+            is ImageCaptureEvent.SingleImageSaved,
+            is ImageCaptureEvent.SequentialImageSaved ->
+                StateAdapterR.string.toast_image_capture_success to false
+
+            is ImageCaptureEvent.SingleImageCaptureError,
+            is ImageCaptureEvent.SequentialImageCaptureError ->
+                StateAdapterR.string.toast_capture_failure to true
+
+            is VideoCaptureEvent.VideoSaved ->
+                StateAdapterR.string.toast_video_capture_success to false
+
+            is VideoCaptureEvent.VideoCaptureError ->
+                StateAdapterR.string.toast_video_capture_failure to true
+
+            else -> null
+        }
+
+        snackbarInfo?.let { (res, isError) ->
+            val cookieInt = snackBarController.incrementAndGetSnackBarCount()
+            val prefix = when (event) {
+                is ImageCaptureEvent -> "Image"
+                is VideoCaptureEvent -> "Video"
+            }
+            snackBarController.addSnackBarData(
+                SnackbarData(
+                    cookie = "$prefix-$cookieInt",
+                    stringResource = res,
+                    withDismissAction = true,
+                    isError = isError
+                )
+            )
+        }
+    }
+}

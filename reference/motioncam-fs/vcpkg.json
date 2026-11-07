@@ -1,0 +1,10 @@
+{
+    "dependencies": [
+        "boost-algorithm",
+        "boost-filesystem",
+        "boost-locale",
+        "boost-iostreams",
+        "spdlog",
+        "bshoshany-thread-pool"
+    ]
+}

@@ -1,0 +1,112 @@
+/*
+ * Copyright (C) 2023 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.settings.model
+
+import com.google.jetpackcamera.model.AspectRatio
+import com.google.jetpackcamera.model.CameraEffectId
+import com.google.jetpackcamera.model.CaptureMode
+import com.google.jetpackcamera.model.CaptureSubModeId
+import com.google.jetpackcamera.model.ConcurrentCameraMode
+import com.google.jetpackcamera.model.DarkMode
+import com.google.jetpackcamera.model.DebugSettings
+import com.google.jetpackcamera.model.DeviceRotation
+import com.google.jetpackcamera.model.DynamicRange
+import com.google.jetpackcamera.model.ExternalCaptureMode
+import com.google.jetpackcamera.model.ExternalCaptureMode.Companion.toCaptureMode
+import com.google.jetpackcamera.model.FlashMode
+import com.google.jetpackcamera.model.ImageOutputFormat
+import com.google.jetpackcamera.model.LensFacing
+import com.google.jetpackcamera.model.LowLightBoostPriority
+import com.google.jetpackcamera.model.MirrorMode
+import com.google.jetpackcamera.model.NONE_EFFECT_ID
+import com.google.jetpackcamera.model.StabilizationMode
+import com.google.jetpackcamera.model.TARGET_FPS_AUTO
+import com.google.jetpackcamera.model.UNLIMITED_VIDEO_DURATION
+import com.google.jetpackcamera.model.VideoQuality
+
+/**
+ * Data layer representation for camera session settings.
+ *
+ * Seeded once from persisted user preferences at camera system initialization and subsequently
+ * updated in-memory via `copy(...)` by the camera system for the duration of the session, so
+ * session-scoped fields ([captureSubModeId], [activeCaptureSubModeId], and
+ * [captureSubModeOverrides]) are preserved across setting changes without being overwritten by
+ * DataStore emissions.
+ */
+data class CameraAppSettings(
+    val captureMode: CaptureMode = CaptureMode.STANDARD,
+    /**
+     * The requested capture sub-mode ([CaptureSubModeId.DEFAULT] for the parent [captureMode]'s
+     * default behavior, or an explicit sub-mode ID when a specific sub-mode is requested).
+     */
+    val captureSubModeId: CaptureSubModeId = CaptureSubModeId.DEFAULT,
+    /**
+     * The effective sub-mode currently active in the camera session after resolving any per-lens
+     * default override ([CameraConstraints.defaultCaptureSubModes]) and verifying lens support
+     * and policy compatibility. When a default override is configured for [captureMode],
+     * [captureSubModeId] remains [CaptureSubModeId.DEFAULT] while [activeCaptureSubModeId] holds
+     * the resolved override's ID (or falls back to [CaptureSubModeId.DEFAULT] if unsupported or
+     * incompatible).
+     */
+    val activeCaptureSubModeId: CaptureSubModeId = CaptureSubModeId.DEFAULT,
+    /**
+     * The values replaced by the policy of [activeCaptureSubModeId], or requested by the user
+     * while it was active, restored when that sub-mode ends. Managed in-memory by the camera
+     * system while a sub-mode is active.
+     */
+    val captureSubModeOverrides: PolicyOverrides? = null,
+    val cameraLensFacing: LensFacing = LensFacing.BACK,
+    val darkMode: DarkMode = DarkMode.DARK,
+    val flashMode: FlashMode = FlashMode.OFF,
+    val selectedCameraEffect: CameraEffectId = NONE_EFFECT_ID,
+    val aspectRatio: AspectRatio = AspectRatio.NINE_SIXTEEN,
+    val stabilizationMode: StabilizationMode = StabilizationMode.AUTO,
+    val dynamicRange: DynamicRange = DynamicRange.SDR,
+    val videoQuality: VideoQuality = VideoQuality.UNSPECIFIED,
+    val mirrorMode: MirrorMode = MirrorMode.OFF,
+    val defaultZoomRatios: Map<LensFacing, Float> = mapOf(),
+    val targetFrameRate: Int = TARGET_FPS_AUTO,
+    val imageFormat: ImageOutputFormat = ImageOutputFormat.JPEG,
+    val audioEnabled: Boolean = true,
+    val deviceRotation: DeviceRotation = DeviceRotation.Natural,
+    val concurrentCameraMode: ConcurrentCameraMode = ConcurrentCameraMode.OFF,
+    val maxVideoDurationMillis: Long = UNLIMITED_VIDEO_DURATION,
+    val lowLightBoostPriority: LowLightBoostPriority = LowLightBoostPriority.PRIORITIZE_AE_MODE,
+    val debugSettings: DebugSettings = DebugSettings(),
+    val locationEnabled: Boolean = false
+)
+
+fun CameraSystemConstraints.forCurrentLens(
+    cameraAppSettings: CameraAppSettings
+): CameraConstraints? = perLensConstraints[cameraAppSettings.cameraLensFacing]
+
+/**
+ * updates the capture mode based on the preview mode
+ */
+fun CameraAppSettings.applyExternalCaptureMode(
+    externalCaptureMode: ExternalCaptureMode
+): CameraAppSettings {
+    val requiredCaptureModeOverride = externalCaptureMode.toCaptureMode()
+    return if (requiredCaptureModeOverride == null ||
+        requiredCaptureModeOverride == this.captureMode
+    ) {
+        this
+    } else {
+        this.copy(captureMode = requiredCaptureModeOverride)
+    }
+}
+
+val DEFAULT_CAMERA_APP_SETTINGS = CameraAppSettings()

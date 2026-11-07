@@ -1,0 +1,252 @@
+/*
+ * Copyright (C) 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.jetpackcamera.data.camera
+
+import com.google.common.truth.Truth.assertThat
+import com.google.jetpackcamera.core.camera.CameraSystem
+import com.google.jetpackcamera.core.camera.testing.FakeCameraSystem
+import com.google.jetpackcamera.model.AspectRatio
+import com.google.jetpackcamera.model.CaptureMode
+import com.google.jetpackcamera.model.CaptureSubModeId
+import com.google.jetpackcamera.model.DebugSettings
+import com.google.jetpackcamera.model.ExternalCaptureMode
+import com.google.jetpackcamera.model.FlashMode
+import com.google.jetpackcamera.settings.model.CameraAppSettings
+import com.google.jetpackcamera.settings.model.CameraFeaturePolicy
+import com.google.jetpackcamera.settings.model.CameraSystemConstraints
+import com.google.jetpackcamera.settings.model.SettingConfig
+import com.google.jetpackcamera.settings.testing.FakeSettingsRepository
+import javax.inject.Provider
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.JUnit4
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(JUnit4::class)
+class CameraXCameraSystemRepositoryTest {
+
+    private val testDispatcher = UnconfinedTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+
+    private class TestCameraSystem(
+        private val delegate: FakeCameraSystem = FakeCameraSystem()
+    ) : CameraSystem by delegate {
+        var initializedSettings: CameraAppSettings? = null
+        var initializedExternalCaptureMode: ExternalCaptureMode? = null
+        var mockPropertiesJSON: String? = null
+
+        override suspend fun initialize(
+            cameraAppSettings: CameraAppSettings,
+            externalCaptureMode: ExternalCaptureMode,
+            cameraPropertiesJSONCallback: (result: String) -> Unit
+        ) {
+            delegate.initialize(
+                cameraAppSettings,
+                externalCaptureMode,
+                cameraPropertiesJSONCallback
+            )
+            delegate.setSystemConstraints(
+                CameraSystemConstraints(
+                    availableLenses = listOf(),
+                    concurrentCamerasSupported = false
+                )
+            )
+            initializedSettings = cameraAppSettings
+            initializedExternalCaptureMode = externalCaptureMode
+            mockPropertiesJSON?.let(cameraPropertiesJSONCallback)
+        }
+    }
+
+    @Test
+    fun getCameraSystem_lazilyInitializesCameraSystem() = testScope.runTest {
+        val testCamera = TestCameraSystem().apply {
+            mockPropertiesJSON = "{\"test\": true}"
+        }
+
+        val launchConfig = CameraLaunchConfig(
+            externalCaptureMode = ExternalCaptureMode.ImageCapture,
+            debugSettings = DebugSettings(isDebugModeEnabled = true)
+        )
+        val settingsRepository = FakeSettingsRepository()
+
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = settingsRepository,
+            launchConfig = launchConfig,
+            scope = testScope
+        )
+
+        // Before getCameraSystem is called, camera is not initialized
+        assertThat(testCamera.initializedSettings).isNull()
+        assertThat(repository.cameraPropertiesJSON.value).isNull()
+
+        // Calling getCameraSystem triggers lazy initialization
+        val cameraSystem = repository.getCameraSystem()
+        assertThat(cameraSystem).isEqualTo(testCamera)
+        assertThat(testCamera.initializedSettings).isNotNull()
+        assertThat(testCamera.initializedSettings?.captureMode).isEqualTo(CaptureMode.IMAGE_ONLY)
+        assertThat(testCamera.initializedExternalCaptureMode)
+            .isEqualTo(ExternalCaptureMode.ImageCapture)
+        assertThat(testCamera.initializedSettings?.debugSettings?.isDebugModeEnabled).isTrue()
+        assertThat(repository.cameraPropertiesJSON.value).isEqualTo("{\"test\": true}")
+    }
+
+    @Test
+    fun systemConstraints_lazilyInitializesCameraSystem() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = FakeSettingsRepository(),
+            launchConfig = CameraLaunchConfig(),
+            scope = testScope
+        )
+
+        assertThat(testCamera.initializedSettings).isNull()
+
+        val constraints = repository.systemConstraints.filterNotNull().first()
+        assertThat(testCamera.initializedSettings).isNotNull()
+        assertThat(constraints).isEqualTo(testCamera.getSystemConstraints().value)
+    }
+
+    @Test
+    fun activeCaptureSubModeId_newCollectorReceivesCurrentValue() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+        val subModeId = CaptureSubModeId("test_sub_mode")
+        testCamera.setCaptureSubMode(subModeId)
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = FakeSettingsRepository(),
+            launchConfig = CameraLaunchConfig(),
+            scope = backgroundScope
+        )
+
+        // A late collector receives the active sub-mode first, not a default.
+        assertThat(repository.activeCaptureSubModeId.first()).isEqualTo(subModeId)
+
+        testCamera.setCaptureSubMode(CaptureSubModeId.DEFAULT)
+        assertThat(repository.activeCaptureSubModeId.first()).isEqualTo(CaptureSubModeId.DEFAULT)
+    }
+
+    @Test
+    fun activeCaptureSubModeId_emitsChangesToACollector() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = FakeSettingsRepository(),
+            launchConfig = CameraLaunchConfig(),
+            scope = backgroundScope
+        )
+        val subModeId = CaptureSubModeId("test_sub_mode")
+        val emitted = mutableListOf<CaptureSubModeId>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.activeCaptureSubModeId.collect { emitted.add(it) }
+        }
+
+        testCamera.setCaptureSubMode(subModeId)
+        testCamera.setCaptureSubMode(CaptureSubModeId.DEFAULT)
+
+        assertThat(emitted)
+            .containsExactly(CaptureSubModeId.DEFAULT, subModeId, CaptureSubModeId.DEFAULT)
+            .inOrder()
+    }
+
+    @Test
+    fun getInitialDefaultCameraAppSettings_returnsDefaultSettings() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+        val settingsRepository = FakeSettingsRepository()
+
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = settingsRepository,
+            launchConfig = CameraLaunchConfig(
+                externalCaptureMode = ExternalCaptureMode.ImageCapture
+            ),
+            scope = testScope
+        )
+
+        assertThat(repository.getInitialDefaultCameraAppSettings())
+            .isEqualTo(settingsRepository.getCurrentDefaultCameraAppSettings())
+        assertThat(testCamera.initializedSettings?.captureMode).isEqualTo(CaptureMode.IMAGE_ONLY)
+    }
+
+    @Test
+    fun getSupportedMimeTypes_initializesAndReturnsMimeTypes() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = FakeSettingsRepository(),
+            launchConfig = CameraLaunchConfig(),
+            scope = testScope
+        )
+
+        val mimeTypes = repository.getSupportedMimeTypes()
+        assertThat(mimeTypes).isNotNull()
+        assertThat(testCamera.initializedSettings).isNotNull()
+    }
+
+    @Test
+    fun getCameraSystem_withCameraFeaturePolicy_appliesDefaultValues() = testScope.runTest {
+        val testCamera = TestCameraSystem()
+        val policy = CameraFeaturePolicy(
+            flashMode = SettingConfig(defaultValue = FlashMode.ON),
+            aspectRatio = SettingConfig(defaultValue = AspectRatio.ONE_ONE),
+            captureMode = SettingConfig(defaultValue = CaptureMode.STANDARD)
+        )
+        val repository = CameraXCameraSystemRepository(
+            cameraXCameraSystemProvider = Provider { testCamera },
+            settingsRepository = FakeSettingsRepository(cameraFeaturePolicy = policy),
+            launchConfig = CameraLaunchConfig(),
+            scope = testScope
+        )
+
+        assertThat(repository.getCameraSystem()).isEqualTo(testCamera)
+        assertThat(testCamera.initializedSettings?.flashMode).isEqualTo(FlashMode.ON)
+        assertThat(testCamera.initializedSettings?.aspectRatio).isEqualTo(AspectRatio.ONE_ONE)
+        assertThat(testCamera.initializedSettings?.captureMode).isEqualTo(CaptureMode.STANDARD)
+    }
+
+    @Test
+    fun getCameraSystem_withVideoOnlyCaptureMode_initializesWithNineSixteenAspectRatio() =
+        testScope.runTest {
+            val testCamera = TestCameraSystem()
+            val policy = CameraFeaturePolicy(
+                captureMode = SettingConfig(defaultValue = CaptureMode.VIDEO_ONLY)
+            )
+            val repository = CameraXCameraSystemRepository(
+                cameraXCameraSystemProvider = Provider { testCamera },
+                settingsRepository = FakeSettingsRepository(cameraFeaturePolicy = policy),
+                launchConfig = CameraLaunchConfig(),
+                scope = testScope
+            )
+
+            assertThat(repository.getCameraSystem()).isEqualTo(testCamera)
+            assertThat(
+                testCamera.initializedSettings?.captureMode
+            ).isEqualTo(CaptureMode.VIDEO_ONLY)
+            assertThat(
+                testCamera.initializedSettings?.aspectRatio
+            ).isEqualTo(AspectRatio.NINE_SIXTEEN)
+        }
+}
