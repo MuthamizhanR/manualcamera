@@ -235,7 +235,8 @@ add_library( # Sets the name of the library.
         ${libmotioncam-src}/source/RawContainer.cpp
         ${libmotioncam-src}/source/Temperature.cpp
         ${libmotioncam-src}/source/Settings.cpp
-        ${libmotioncam-src}/source/Util.cpp)
+        ${libmotioncam-src}/source/Util.cpp
+        ${libmotioncam-src}/source/SensorRecorder.cpp)
 
 # Include directories
 target_include_directories(motion-cam PUBLIC
@@ -347,6 +348,7 @@ set(native-camera-libs
         EGL
         ${log}
         ${z}
+        android
 )
 
 

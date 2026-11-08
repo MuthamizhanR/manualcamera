@@ -1,6 +1,7 @@
 #include "motioncam/RawContainer.h"
 #include "motioncam/Util.h"
 #include "motioncam/Exceptions.h"
+#include "motioncam/SensorRecorder.h"
 #include "motioncam/Math.h"
 #include "motioncam/Measure.h"
 
@@ -229,6 +230,9 @@ namespace motioncam {
         metadataJson["colorIlluminant1"]    = color::IlluminantToString(mCameraMetadata.colorIlluminant1);
         metadataJson["colorIlluminant2"]    = color::IlluminantToString(mCameraMetadata.colorIlluminant2);
         metadataJson["forwardMatrix1"]      = toJsonArray(mCameraMetadata.forwardMatrix1);
+        metadataJson["gyro"]                = SensorRecorder::get().getGyroJson();
+        metadataJson["accelerometer"]       = SensorRecorder::get().getAccelJson();
+        SensorRecorder::get().clear();
         metadataJson["forwardMatrix2"]      = toJsonArray(mCameraMetadata.forwardMatrix2);
         metadataJson["colorMatrix1"]        = toJsonArray(mCameraMetadata.colorMatrix1);
         metadataJson["colorMatrix2"]        = toJsonArray(mCameraMetadata.colorMatrix2);
