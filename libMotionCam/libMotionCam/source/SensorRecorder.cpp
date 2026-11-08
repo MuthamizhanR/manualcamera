@@ -9,7 +9,7 @@ namespace motioncam {
         return instance;
     }
 
-    SensorRecorder::SensorRecorder() : mIsRecording(false) {
+    SensorRecorder::SensorRecorder() : mIsRecording(false), mInitDone(false), mThread(), mLooper(nullptr), mEventQueue(nullptr) {
         mSensorManager = ASensorManager_getInstanceForPackage("com.motioncam");
         if (!mSensorManager) {
             mSensorManager = ASensorManager_getInstance();
@@ -18,18 +18,44 @@ namespace motioncam {
         mGyroSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_GYROSCOPE);
         mAccelSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_ACCELEROMETER);
 
-        mLooper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
-        mEventQueue = ASensorManager_createEventQueue(mSensorManager, mLooper, 3, sensorCallback, this);
-
         mGyroSamples.reserve(MAX_SAMPLES);
         mAccelSamples.reserve(MAX_SAMPLES);
+
+        mThread = std::thread(&SensorRecorder::looperThread, this);
+
+        std::unique_lock<std::mutex> lock(mMutex);
+        mInitCond.wait(lock, [this]() { return mInitDone; });
     }
 
     SensorRecorder::~SensorRecorder() {
         stop();
-        if (mEventQueue) {
-            ASensorManager_destroyEventQueue(mSensorManager, mEventQueue);
+        if (mLooper) {
+            ALooper_wake(mLooper);
         }
+        if (mThread.joinable()) {
+            mThread.join();
+        }
+    }
+
+    void SensorRecorder::looperThread() {
+        mLooper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+        mEventQueue = ASensorManager_createEventQueue(mSensorManager, mLooper, 3, sensorCallback, this);
+
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mInitDone = true;
+        }
+        mInitCond.notify_one();
+
+        while (true) {
+            int ident = ALooper_pollAll(-1, nullptr, nullptr, nullptr);
+            if (ident == ALOOPER_POLL_WAKE) {
+                break; // Wake means exit thread
+            }
+        }
+
+        ASensorManager_destroyEventQueue(mSensorManager, mEventQueue);
+        mEventQueue = nullptr;
     }
 
     void SensorRecorder::start() {

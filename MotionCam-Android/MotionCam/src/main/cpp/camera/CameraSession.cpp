@@ -568,8 +568,6 @@ namespace motioncam {
         // Start capture
         LOGD("Starting capture");
 
-        SensorRecorder::get().start();
-
         mCameraStateManager = std::unique_ptr<CameraStateManager>(new CameraStateManager(*mSessionContext, *mCameraDescription));
         mCameraStateManager->start();
 
@@ -577,7 +575,6 @@ namespace motioncam {
     }
 
     void CameraSession::doCloseCamera() {
-        SensorRecorder::get().stop();
         // Close capture session
         LOGD("Closing capture session");
         mSessionContext->captureSession = nullptr;
@@ -782,7 +779,6 @@ namespace motioncam {
         mHdrCaptureInProgress = false;
 
         LOGI("HDR capture completed. Saving data.");
-        SensorRecorder::get().stop();
         RawBufferManager::get().save(
                 RawType::HDR,
                 mSaveHdrCaptures,

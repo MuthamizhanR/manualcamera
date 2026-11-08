@@ -7,7 +7,6 @@
 #include <motioncam/ImageProcessor.h>
 #include <motioncam/RawBufferManager.h>
 
-#include "motioncam/SensorRecorder.h"
 #include "NativeCameraBridgeListener.h"
 #include "NativeRawPreviewListener.h"
 
@@ -317,8 +316,6 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
     motioncam::PostProcessSettings settings(json);
-
-    motioncam::SensorRecorder::get().stop();
 
     RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, settings, std::string(outputPath));
 

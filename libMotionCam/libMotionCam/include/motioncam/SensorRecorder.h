@@ -7,6 +7,8 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <thread>
+#include <condition_variable>
 
 namespace motioncam {
 
@@ -41,6 +43,11 @@ namespace motioncam {
         static int sensorCallback(int fd, int events, void* data);
         void onSensorEvent(const ASensorEvent& event);
 
+        void looperThread();
+
+        std::thread mThread;
+        std::condition_variable mInitCond;
+        bool mInitDone;
         ASensorManager* mSensorManager;
         ALooper* mLooper;
         ASensorEventQueue* mEventQueue;
