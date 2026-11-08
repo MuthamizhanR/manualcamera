@@ -50,6 +50,9 @@ namespace motioncam {
     }
 
     void RawBufferManager::addBuffer(std::shared_ptr<RawImageBuffer>& buffer) {
+        if (!buffer || !buffer->data) {
+            return;
+        }
         mUnusedBuffers.enqueue(buffer);
         
         ++mNumBuffers;

@@ -46,6 +46,9 @@ namespace motioncam {
         std::map<int32_t, std::vector<OutputConfiguration>> outputConfigs;
         std::vector<acamera_metadata_enum_android_lens_optical_stabilization_mode_t> oisModes;
         std::vector<acamera_metadata_enum_android_tonemap_mode_t> tonemapModes;
+        std::vector<std::pair<int32_t, int32_t>> fpsRanges;
+        std::vector<std::string> physicalIds;
+
 
         RawCameraMetadata metadata;
 
