@@ -52,6 +52,12 @@ jobs:
         cmake --build build_decoder
         ctest --test-dir build_decoder --output-on-failure
 
+    - name: Run C++ mcraw_v3 encoder tests
+      run: |
+        cmake -S libMotionCam/mcraw_v3 -B build_mcraw -DBUILD_TESTING=ON
+        cmake --build build_mcraw
+        ctest --test-dir build_mcraw --output-on-failure
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
