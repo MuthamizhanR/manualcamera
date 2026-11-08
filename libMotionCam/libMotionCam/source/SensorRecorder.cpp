@@ -2,6 +2,9 @@
 #include "motioncam/Logger.h"
 #include <algorithm>
 #include <dlfcn.h>
+#include <android/log.h>
+
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SensorRecorder", __VA_ARGS__)
 
 namespace motioncam {
 
