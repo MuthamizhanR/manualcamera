@@ -191,28 +191,6 @@ namespace motioncam {
                 // Add to our structure for easier access
                 cameraDescription.outputConfigs[format].push_back({ format, DisplayDimension(width, height) });
 
-            }
-        }
-
-        if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, &entry) == ACAMERA_OK) {
-            for (int i = 0; i < entry.count; i += 2) {
-                int32_t minFps = entry.data.i32[i];
-                int32_t maxFps = entry.data.i32[i+1];
-                cameraDescription.fpsRanges.push_back({minFps, maxFps});
-            }
-        }
-
-        if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS, &entry) == ACAMERA_OK) {
-            std::string physicalIds((const char*)entry.data.u8, entry.count);
-            size_t pos = 0;
-            while (pos < physicalIds.length() && physicalIds[pos] != '\0') {
-                std::string id = std::string(&physicalIds[pos]);
-                cameraDescription.physicalIds.push_back(id);
-                pos += id.length() + 1;
-                LOGD("Found physical camera ID for %s: %s", cameraDescription.id.c_str(), id.c_str());
-            }
-        }
-
                 LOGD("Found output configuration for camera %s format: %d width: %d height: %d", cameraDescription.id.c_str(), format, width, height);
             }
         }
@@ -223,6 +201,18 @@ namespace motioncam {
                 int32_t minFps = entry.data.i32[i];
                 int32_t maxFps = entry.data.i32[i+1];
                 cameraDescription.fpsRanges.push_back({minFps, maxFps});
+            }
+        }
+
+        // ACAMERA_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS
+        if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS, &entry) == ACAMERA_OK) {
+            std::string physicalIds((const char*)entry.data.u8, entry.count);
+            size_t pos = 0;
+            while (pos < physicalIds.length() && physicalIds[pos] != '\0') {
+                std::string id = std::string(&physicalIds[pos]);
+                cameraDescription.physicalIds.push_back(id);
+                pos += id.length() + 1;
+                LOGD("Found physical camera ID for %s: %s", cameraDescription.id.c_str(), id.c_str());
             }
         }
 

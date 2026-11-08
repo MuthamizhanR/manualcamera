@@ -1,6 +1,7 @@
 #include "motioncam/SensorRecorder.h"
 #include "motioncam/Logger.h"
 #include <algorithm>
+#include <dlfcn.h>
 
 namespace motioncam {
 
@@ -9,17 +10,29 @@ namespace motioncam {
         return instance;
     }
 
-    SensorRecorder::SensorRecorder() : mIsRecording(false), mInitDone(false), mThread(), mLooper(nullptr), mEventQueue(nullptr) {
-        mSensorManager = ASensorManager_getInstanceForPackage("com.motioncam");
-        if (!mSensorManager) {
+    SensorRecorder::SensorRecorder()
+        : mThread(),
+          mInitDone(false),
+          mSensorManager(nullptr),
+          mLooper(nullptr),
+          mEventQueue(nullptr),
+          mGyroSensor(nullptr),
+          mAccelSensor(nullptr),
+          mIsRecording(false) {
+        typedef ASensorManager* (*PFN_ASensorManager_getInstanceForPackage)(const char*);
+        static auto pfnGetInstanceForPackage = (PFN_ASensorManager_getInstanceForPackage) dlsym(RTLD_DEFAULT, "ASensorManager_getInstanceForPackage");
+        if (pfnGetInstanceForPackage) {
+            mSensorManager = pfnGetInstanceForPackage("com.motioncam");
+        } else {
             mSensorManager = ASensorManager_getInstance();
         }
 
-        mGyroSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_GYROSCOPE);
-        mAccelSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_ACCELEROMETER);
-
-        mGyroSamples.reserve(MAX_SAMPLES);
-        mAccelSamples.reserve(MAX_SAMPLES);
+        if (mSensorManager) {
+            mGyroSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_GYROSCOPE);
+            mAccelSensor = ASensorManager_getDefaultSensor(mSensorManager, ASENSOR_TYPE_ACCELEROMETER);
+        } else {
+            LOGE("SensorRecorder: Failed to get ASensorManager");
+        }
 
         mThread = std::thread(&SensorRecorder::looperThread, this);
 
@@ -38,6 +51,13 @@ namespace motioncam {
     }
 
     void SensorRecorder::looperThread() {
+        if (!mSensorManager) {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mInitDone = true;
+            mInitCond.notify_one();
+            return;
+        }
+
         mLooper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
         mEventQueue = ASensorManager_createEventQueue(mSensorManager, mLooper, 3, sensorCallback, this);
 
@@ -54,13 +74,15 @@ namespace motioncam {
             }
         }
 
-        ASensorManager_destroyEventQueue(mSensorManager, mEventQueue);
-        mEventQueue = nullptr;
+        if (mEventQueue) {
+            ASensorManager_destroyEventQueue(mSensorManager, mEventQueue);
+            mEventQueue = nullptr;
+        }
     }
 
     void SensorRecorder::start() {
         std::lock_guard<std::mutex> lock(mMutex);
-        if (mIsRecording) return;
+        if (mIsRecording || !mEventQueue) return;
 
         mGyroSamples.clear();
         mAccelSamples.clear();
@@ -79,7 +101,7 @@ namespace motioncam {
 
     void SensorRecorder::stop() {
         std::lock_guard<std::mutex> lock(mMutex);
-        if (!mIsRecording) return;
+        if (!mIsRecording || !mEventQueue) return;
 
         if (mGyroSensor) {
             ASensorEventQueue_disableSensor(mEventQueue, mGyroSensor);
@@ -101,7 +123,7 @@ namespace motioncam {
         SensorRecorder* recorder = static_cast<SensorRecorder*>(data);
 
         ASensorEvent event;
-        while (ASensorEventQueue_getEvents(recorder->mEventQueue, &event, 1) > 0) {
+        while (recorder->mEventQueue && ASensorEventQueue_getEvents(recorder->mEventQueue, &event, 1) > 0) {
             recorder->onSensorEvent(event);
         }
 
@@ -120,8 +142,8 @@ namespace motioncam {
             sample.y = event.vector.v[1];
             sample.z = event.vector.v[2];
 
-            if (mGyroSamples.size() >= MAX_SAMPLES) {
-                mGyroSamples.erase(mGyroSamples.begin());
+            while (mGyroSamples.size() >= MAX_SAMPLES) {
+                mGyroSamples.pop_front();
             }
             mGyroSamples.push_back(sample);
         } else if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
@@ -129,8 +151,8 @@ namespace motioncam {
             sample.y = event.vector.v[1];
             sample.z = event.vector.v[2];
 
-            if (mAccelSamples.size() >= MAX_SAMPLES) {
-                mAccelSamples.erase(mAccelSamples.begin());
+            while (mAccelSamples.size() >= MAX_SAMPLES) {
+                mAccelSamples.pop_front();
             }
             mAccelSamples.push_back(sample);
         }

@@ -4,6 +4,7 @@
 #include <android/sensor.h>
 #include <android/looper.h>
 #include <json11/json11.hpp>
+#include <deque>
 #include <vector>
 #include <mutex>
 #include <atomic>
@@ -57,8 +58,8 @@ namespace motioncam {
 
         static constexpr size_t MAX_SAMPLES = 6000;
 
-        std::vector<MotionSample> mGyroSamples;
-        std::vector<MotionSample> mAccelSamples;
+        std::deque<MotionSample> mGyroSamples;
+        std::deque<MotionSample> mAccelSamples;
 
         mutable std::mutex mMutex;
         std::atomic<bool> mIsRecording;
