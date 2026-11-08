@@ -334,7 +334,15 @@ namespace motioncam {
         {
             std::shared_ptr<RawImageBuffer> buffer;
 
+#ifdef GPU_CAMERA_PREVIEW
+            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
+#else
+            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeHostBuffer>(bufferLength));
+#endif
 
+            if (!buffer || !buffer->data) {
+                continue;
+            }
 
             RawBufferManager::get().addBuffer(buffer);
 
