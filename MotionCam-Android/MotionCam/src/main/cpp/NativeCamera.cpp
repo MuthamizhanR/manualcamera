@@ -62,7 +62,7 @@ jlong JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Create(
 
         gCaptureSessionManagerRefs = 1;
     }
-    catch(const std::exception& e) {
+    catch(const CameraSessionException& e) {
         gLastError = e.what();
         return INVALID_NATIVE_OBJ;
     }
@@ -137,7 +137,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
 
         sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview, preferRaw16);
     }
-    catch(const std::exception& e) {
+    catch(const CameraSessionException& e) {
         gLastError = e.what();
         return JNI_FALSE;
     }
@@ -156,7 +156,7 @@ JNIEXPORT jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_S
     try {
         sessionManager->stopCamera();
     }
-    catch(const std::exception& e) {
+    catch(const CameraSessionException& e) {
         gLastError = e.what();
         return JNI_FALSE;
     }
@@ -200,7 +200,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetRawOutput
         }
 
     }
-    catch(const std::exception& e) {
+    catch(const CameraSessionException& e) {
         gLastError = e.what();
     }
 
@@ -260,7 +260,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewOu
             return previewSizeInstance;
         }
     }
-    catch(const std::exception& e) {
+    catch(const CameraSessionException& e) {
         gLastError = e.what();
     }
 
@@ -380,7 +380,6 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetAutoExpo
 
 extern "C" JNIEXPORT
 jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetMetadata(JNIEnv *env, jobject thiz, jlong sessionHandle, jstring jcameraId) {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
 
     if(!sessionManager) {
@@ -425,14 +424,6 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetMetadata(
                 apertures);
 
     return obj;
-    }
-    catch (const std::exception& e) {
-        LOGE("GetMetadata exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        return nullptr;
-    }
 }
 
 extern "C" JNIEXPORT
@@ -519,7 +510,6 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
         jobject thiz,
         jlong handle)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return nullptr;
@@ -556,14 +546,6 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
     }
 
     return result;
-    }
-    catch (const std::exception& e) {
-        LOGE("GetAvailableImages exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        return nullptr;
-    }
 }
 
 extern "C"
@@ -574,7 +556,6 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewSize(
         jlong handle,
         jint downscaleFactor)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return nullptr;
@@ -600,14 +581,6 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewSize(
             );
 
     return captureSize;
-    }
-    catch (const std::exception& e) {
-        LOGE("GetPreviewSize exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        return nullptr;
-    }
 }
 
 extern "C"
@@ -621,7 +594,6 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_CreateImagePreview(
         jint downscaleFactor,
         jobject dst)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager || !gImageProcessor) {
         return JNI_FALSE;
@@ -709,15 +681,6 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_CreateImagePreview(
     }
 
     return JNI_TRUE;
-    }
-    catch (const std::exception& e) {
-        LOGE("CreateImagePreview exception: %s", e.what());
-        return JNI_FALSE;
-    }
-    catch (...) {
-        LOGE("CreateImagePreview unknown exception");
-        return JNI_FALSE;
-    }
 }
 
 extern "C"
@@ -727,7 +690,6 @@ JNIEXPORT jdouble JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Me
         jlong handle,
         jlong bufferHandle)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return JNI_FALSE;
@@ -742,14 +704,6 @@ JNIEXPORT jdouble JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Me
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
     return gImageProcessor->measureSharpness(*imageBuffer);
-    }
-    catch (const std::exception& e) {
-        LOGE("MeasureSharpness exception: %s", e.what());
-        return -1e10;
-    }
-    catch (...) {
-        return -1e10;
-    }
 }
 
 extern "C"
@@ -760,7 +714,6 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
         jboolean basicSettings,
         jfloat shadowsBias)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return nullptr;
@@ -782,16 +735,7 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
         ImageProcessor::estimateSettings(*imageBuffer, metadata, settings);
 
     auto settingsJson = settings.toJson();
-        return env->NewStringUTF(settingsJson.dump().c_str());
-    }
-    catch (const std::exception& e) {
-        LOGE("EstimatePostProcessSettings exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        LOGE("EstimatePostProcessSettings unknown exception");
-        return nullptr;
-    }
+    return env->NewStringUTF(settingsJson.dump().c_str());
 }
 
 extern "C"
@@ -800,7 +744,6 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
         jobject thiz,
         jlong handle)
 {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return nullptr;
@@ -834,14 +777,6 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
     }
 
     return result;
-    }
-    catch (const std::exception& e) {
-        LOGE("GetSupportedCameras exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        return nullptr;
-    }
 }
 
 extern "C" JNIEXPORT
@@ -873,7 +808,6 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetExposure
 
 extern "C" JNIEXPORT
 jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle, jfloat bias) {
-    try {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return -1.0f;
@@ -893,14 +827,6 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
     float keyValue = 1.03f - bias / (bias + std::log10(std::pow(10.0f, ev) + 1));
 
     return motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
-    }
-    catch (const std::exception& e) {
-        LOGE("EstimateShadows exception: %s", e.what());
-        return -1.0f;
-    }
-    catch (...) {
-        return -1.0f;
-    }
 }
 
 extern "C" JNIEXPORT
@@ -988,23 +914,14 @@ jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetRawPrevie
         jlong handle)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
-    try {
-        if(!sessionManager) {
-            return nullptr;
-        }
-
-        PostProcessSettings settings;
-
-        sessionManager->getEstimatedPostProcessSettings(settings);
-
-        auto settingsJson = settings.toJson();
-        return env->NewStringUTF(settingsJson.dump().c_str());
+    if(!sessionManager) {
+        return JNI_FALSE;
     }
-    catch (const std::exception& e) {
-        LOGE("GetRawPreviewEstimatedSettings exception: %s", e.what());
-        return nullptr;
-    }
-    catch (...) {
-        return nullptr;
-    }
+
+    PostProcessSettings settings;
+
+    sessionManager->getEstimatedPostProcessSettings(settings);
+
+    auto settingsJson = settings.toJson();
+    return env->NewStringUTF(settingsJson.dump().c_str());
 }

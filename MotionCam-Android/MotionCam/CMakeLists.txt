@@ -237,16 +237,13 @@ add_library( # Sets the name of the library.
         ${libmotioncam-src}/source/RawContainer.cpp
         ${libmotioncam-src}/source/Temperature.cpp
         ${libmotioncam-src}/source/Settings.cpp
-        ${libmotioncam-src}/source/Util.cpp
-        ${libmotioncam-src}/source/SensorRecorder.cpp)
+        ${libmotioncam-src}/source/Util.cpp)
 
 # Include directories
 target_include_directories(motion-cam PUBLIC
         ${libmotioncam-src}/include
         ${CMAKE_SOURCE_DIR}/../../libMotionCam/mcraw_v3
         ${CMAKE_SOURCE_DIR}/../../libMotionCam/thirdparty/queue/queue
-        ${CMAKE_SOURCE_DIR}/../../reference/motioncam-decoder/lib/include
-        ${CMAKE_SOURCE_DIR}/../../reference/motioncam-decoder/thirdparty
         ${thirdparty-libs}/json11
         ${thirdparty-libs}/miniz
         ${thirdparty-libs}/opencl
@@ -272,7 +269,6 @@ set(native-camera-cpp
         src/main/cpp/camera/ClHelper.cpp
         src/main/cpp/camera/NativeClBuffer.cpp
         src/main/cpp/camera/RawImageConsumer.cpp
-        src/main/cpp/camera/DirectLogEncoder.cpp
 )
 
 # Creates and names a library, sets it as either STATIC
@@ -354,7 +350,6 @@ set(native-camera-libs
         EGL
         ${log}
         ${z}
-        android
 )
 
 

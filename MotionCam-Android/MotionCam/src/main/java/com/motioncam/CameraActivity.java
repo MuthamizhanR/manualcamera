@@ -14,7 +14,6 @@ import android.graphics.SurfaceTexture;
 import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -89,6 +88,11 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
+
+    private static final String[] REQUEST_PERMISSIONS = {
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION
+    };
 
     private enum FocusState {
         AUTO,
@@ -293,7 +297,6 @@ public class CameraActivity extends AppCompatActivity implements
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        MotionCamApp.installCrashHandler(this);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         onWindowFocusChanged(true);
@@ -976,22 +979,10 @@ public class CameraActivity extends AppCompatActivity implements
         }
     }
 
-    private String[] getRequiredPermissions() {
-        ArrayList<String> permissions = new ArrayList<>();
-        permissions.add(Manifest.permission.CAMERA);
-        permissions.add(Manifest.permission.RECORD_AUDIO);
-        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-        }
-        return permissions.toArray(new String[0]);
-    }
-
     private void requestPermissions() {
         ArrayList<String> needPermissions = new ArrayList<>();
 
-        for(String permission : getRequiredPermissions()) {
+        for(String permission : REQUEST_PERMISSIONS) {
             if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 needPermissions.add(permission);
             }
@@ -1013,25 +1004,19 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
-        // Camera permission is strictly required; storage or audio permissions should NOT cause finish()
-        boolean cameraDenied = false;
+        // Check if camera permission has been denied
         for(int i = 0; i < permissions.length; i++) {
-            if(grantResults[i] == PackageManager.PERMISSION_DENIED && Manifest.permission.CAMERA.equals(permissions[i])) {
-                cameraDenied = true;
-                break;
+            if(grantResults[i] == PackageManager.PERMISSION_DENIED && permissions[i].equals(Manifest.permission.CAMERA)) {
+                runOnUiThread(this::onPermissionsDenied);
+                return;
             }
         }
 
-        if (cameraDenied) {
-            runOnUiThread(this::onPermissionsDenied);
-        } else {
-            runOnUiThread(this::onPermissionsGranted);
-        }
+        runOnUiThread(this::onPermissionsGranted);
     }
 
     private void onPermissionsGranted() {
         mHavePermissions = true;
-        initCamera();
 
         // Kick off image processor in case there are images we have not processed
         startImageProcessor();
@@ -1201,11 +1186,6 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
-        if(mCameraStarting) {
-            Log.w(TAG, "Camera already starting, ignoring duplicate onSurfaceTextureAvailable()");
-            return;
-        }
-
         if(mSurface != null) {
             Log.w(TAG, "Surface still exists, releasing");
             mSurface.release();
@@ -1215,27 +1195,7 @@ public class CameraActivity extends AppCompatActivity implements
         startCamera(surfaceTexture, width, height);
     }
 
-    private boolean mCameraStarting;
-
     private void startCamera(SurfaceTexture surfaceTexture, int width, int height) {
-        if(mCameraStarting) {
-            Log.w(TAG, "startCamera() already in progress, ignoring");
-            return;
-        }
-
-        mCameraStarting = true;
-        try {
-            startCameraInternal(surfaceTexture, width, height);
-        }
-        catch (Exception e) {
-            Log.e(TAG, "Failed to start camera", e);
-        }
-        finally {
-            mCameraStarting = false;
-        }
-    }
-
-    private void startCameraInternal(SurfaceTexture surfaceTexture, int width, int height) {
         int displayWidth;
         int displayHeight;
 
@@ -1268,13 +1228,7 @@ public class CameraActivity extends AppCompatActivity implements
         configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
-        try {
-            mNativeCamera.startCapture(mSelectedCamera, mSurface, mSettings.useDualExposure, mSettings.rawMode == SettingsViewModel.RawMode.RAW16);
-        }
-        catch (Exception e) {
-            Log.e(TAG, "startCapture failed", e);
-            return;
-        }
+        mNativeCamera.startCapture(mSelectedCamera, mSurface, mSettings.useDualExposure, mSettings.rawMode == SettingsViewModel.RawMode.RAW16);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
@@ -1433,17 +1387,13 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void startImageProcessor() {
-        try {
-            // Start service to process the image
-            Intent intent = new Intent(this, ProcessorService.class);
+        // Start service to process the image
+        Intent intent = new Intent(this, ProcessorService.class);
 
-            intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(this).getPath());
-            intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
+        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(this).getPath());
+        intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
-            startService(intent);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start ProcessorService", e);
-        }
+        Objects.requireNonNull(startService(intent));
     }
 
     @Override

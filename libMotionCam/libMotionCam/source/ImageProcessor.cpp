@@ -205,10 +205,6 @@ namespace motioncam {
 }
 
     float ImageProcessor::estimateShadows(const cv::Mat& histogram, float keyValue) {
-        if (histogram.empty() || histogram.cols <= 0 || histogram.rows <= 0) {
-            return 1.0f;
-        }
-
         float avgLuminance = 0.0f;
         
         float totalPixels = 0;
@@ -227,10 +223,6 @@ namespace motioncam {
     }
 
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram, float threshold) {
-        if (histogram.empty() || histogram.cols <= 0 || histogram.rows <= 0) {
-            return 0.0f;
-        }
-
         int bin = 0;
         float total = 0.0f;
         
@@ -403,30 +395,21 @@ namespace motioncam {
                                                const RawCameraMetadata& cameraMetadata,
                                                PostProcessSettings& outSettings)
     {
-        // Safe default non-zero values
-        outSettings.temperature    = 5000.0f;
-        outSettings.tint           = 0.0f;
-        outSettings.shadows        = 1.0f;
-        outSettings.exposure       = 0.0f;
-        outSettings.blacks         = 0.0f;
-        outSettings.whitePoint     = 1.0f;
-        outSettings.contrast       = 0.5f;
-        outSettings.saturation     = 1.0f;
-        outSettings.sceneLuminance = 1.0f;
-        outSettings.noiseSigma     = 1.0f;
+        //Measure measure("estimateBasicSettings()");
+        float keyValue = getShadowKeyValue(rawBuffer, cameraMetadata, false);
 
-        try {
-            cv::Vec3f asShot = rawBuffer.metadata.asShot;
-            if (asShot[0] > 0.0f || asShot[1] > 0.0f || asShot[2] > 0.0f) {
-                CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
-                Temperature temperature;
-                cameraProfile.temperatureFromVector(asShot, temperature);
-                outSettings.temperature = static_cast<float>(temperature.temperature());
-                outSettings.tint        = static_cast<float>(temperature.tint());
-            }
-        } catch (...) {
-            // Keep safe defaults if temperature extraction fails
-        }
+        // Start with basic initial values
+        CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
+        Temperature temperature;
+
+        cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
+
+        cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
+
+        outSettings.temperature    = static_cast<float>(temperature.temperature());
+        outSettings.tint           = static_cast<float>(temperature.tint());
+        outSettings.shadows        = estimateShadows(histogram, keyValue);
+        outSettings.exposure       = estimateExposureCompensation(histogram, 1e-3f);
     }
 
     void ImageProcessor::estimateWhiteBalance(const RawImageBuffer& rawBuffer,
@@ -435,6 +418,8 @@ namespace motioncam {
                                               float& outG,
                                               float& outB)
     {
+        Measure measure("estimateWhiteBalance()");
+
         outR = 1.0f;
         outG = 1.0f;
         outB = 1.0f;
@@ -444,7 +429,77 @@ namespace motioncam {
                                           const RawCameraMetadata& cameraMetadata,
                                           PostProcessSettings& outSettings)
     {
-        estimateBasicSettings(rawBuffer, cameraMetadata, outSettings);
+        Measure measure("estimateSettings");
+
+        float keyValue = getShadowKeyValue(rawBuffer, cameraMetadata, false);
+
+        // Start with basic initial values
+        PostProcessSettings settings;
+
+        // Calculate white balance from metadata
+        CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
+        Temperature temperature;
+
+        cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
+
+        cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
+
+        settings.temperature    = static_cast<float>(temperature.temperature());
+        settings.tint           = static_cast<float>(temperature.tint());
+        settings.shadows        = estimateShadows(histogram, keyValue);
+        settings.exposure       = estimateExposureCompensation(histogram);
+
+        estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
+
+        auto preview =
+            estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, WHITEPOINT_THRESHOLD, settings.whitePoint);
+
+        //
+        // Scene luminance
+        //
+
+        preview.convertTo(preview, CV_32F, 1.0/255.0);
+        cv::log(preview + 0.001f, preview);
+
+        settings.sceneLuminance = static_cast<float>(cv::exp(1.0/(preview.cols*preview.rows) * cv::sum(preview)[0]));
+
+        //
+        // Use faster method for noise estimate
+        //
+
+        auto rawImage = loadRawImage(rawBuffer, cameraMetadata);
+
+        cv::Mat rawImageInput(rawImage->rawBuffer.height(),
+                              rawImage->rawBuffer.width(),
+                              CV_16U,
+                              rawImage->rawBuffer.data());
+
+        cv::Mat k(3, 3, CV_32F);
+
+        k.at<float>(0, 0) =  1;
+        k.at<float>(0, 1) = -2;
+        k.at<float>(0, 2) =  1;
+
+        k.at<float>(1, 0) = -2;
+        k.at<float>(1, 1) =  4;
+        k.at<float>(1, 2) = -2;
+
+        k.at<float>(2, 0) =  1;
+        k.at<float>(2, 1) = -2;
+        k.at<float>(2, 2) =  1;
+
+        cv::filter2D(rawImageInput, rawImageInput, CV_32F, k);
+
+        const double pi = 3.14159265358979323846;
+        double p = 1.0 / ( 6.0 * (rawImageInput.cols - 2.0) * (rawImageInput.rows - 2.0) );
+        p = sqrt(0.5*pi) * p;
+
+        auto sigma = p * cv::sum(cv::abs(rawImageInput));
+
+        settings.noiseSigma = sigma[0];
+
+        // Update estimated settings
+        outSettings = settings;
     }
 
     void ImageProcessor::createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
@@ -505,51 +560,41 @@ namespace motioncam {
                                                                    const RawCameraMetadata& cameraMetadata,
                                                                    const PostProcessSettings& settings)
     {
-        int factor = std::max(1, downscaleFactor);
-        int w = std::max(1, rawBuffer.width / 2 / factor);
-        int h = std::max(1, rawBuffer.height / 2 / factor);
-        Halide::Runtime::Buffer<uint8_t> preview(w, h, 4);
-        preview.fill(16);
-        return preview;
-    }
+    return Halide::Runtime::Buffer<uint8_t>();
+}
     
     std::shared_ptr<RawData> ImageProcessor::loadRawImage(const RawImageBuffer& rawBuffer,
                                                           const RawCameraMetadata& cameraMetadata,
                                                           const bool extendEdges,
                                                           const float scalePreview)
     {
-        auto data = std::make_shared<RawData>();
-        int w = std::max(1, rawBuffer.width);
-        int h = std::max(1, rawBuffer.height);
-        data->rawBuffer = Halide::Runtime::Buffer<uint16_t>(w, h, 1);
-        data->rawBuffer.fill(0);
-        return data;
-    }
+    return std::make_shared<RawData>();
+}
 
     void ImageProcessor::measureImage(RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity)
     {
-        outSceneLuminosity = 1.0f;
-    }
+    outSceneLuminosity = 0.0f;
+}
 
     cv::Mat ImageProcessor::registerImage2(
         const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer)
     {
-        return cv::Mat();
-    }
+    return cv::Mat();
+}
 
     cv::Mat ImageProcessor::registerImage(
         const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer)
     {
-        return cv::Mat();
-    }
+    return cv::Mat();
+}
 
     cv::Mat ImageProcessor::calcHistogram(const RawCameraMetadata& cameraMetadata,
                                           const RawImageBuffer& buffer,
                                           const bool cumulative,
                                           const int downscale)
     {
-        return cv::Mat::zeros(1, 256, CV_32F);
-    }
+    return cv::Mat();
+}
 
     void ImageProcessor::matchExposures(
         const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch, float& outScale, float& outWhitePoint)

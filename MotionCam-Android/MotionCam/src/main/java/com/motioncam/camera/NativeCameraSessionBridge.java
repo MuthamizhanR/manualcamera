@@ -161,14 +161,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         ensureValidHandle();
 
         if(!StartCapture(mNativeCameraHandle, cameraInfo.cameraId, previewOutput, setupForRawPreview, preferRaw16)) {
-            String error = GetLastError();
-
-            if(error != null && error.toLowerCase().contains("already open")) {
-                android.util.Log.w("MotionCam", "Camera session is already open, ignoring duplicate startCapture()");
-                return;
-            }
-
-            throw new CameraException(error);
+            throw new CameraException(GetLastError());
         }
     }
 

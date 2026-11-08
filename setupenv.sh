@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euxo pipefail
-export ANDROID_NDK="$(brew --prefix)/share/android-ndk"
+export ANDROID_NDK=/opt/android-sdk/ndk/22.1.7171670
 export LLVM_DIR=/usr/local/Cellar/llvm/12.0.0/lib/cmake
 if [[ -z "${ANDROID_NDK-}" ]]; then
 	echo -e "Please set ANDROID_NDK to point to the NDK installation path"
@@ -31,18 +31,18 @@ build_opencv() {
 	curl -L https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip --output ${OPENCV_ARCHIVE}
 	curl -L https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip --output ${OPENCV_CONTRIB_ARCHIVE}
 
-	unzip ${OPENCV_ARCHIVE}
-	unzip ${OPENCV_CONTRIB_ARCHIVE}
+	unzip -o ${OPENCV_ARCHIVE}
+	unzip -o ${OPENCV_CONTRIB_ARCHIVE}
 
 	pushd opencv-${OPENCV_VERSION}
 
 	mkdir -p build
 	pushd build
 
-	cmake -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules -DCMAKE_INSTALL_PREFIX=../build/${ANDROID_ABI} -DCMAKE_SYSTEM_NAME=Android 	\
-		-DANDROID_NATIVE_API_LEVEL=21 -DCMAKE_SYSTEM_VERSION=21 -DANDROID_ABI=${ANDROID_ABI} -DCMAKE_ANDROID_ARCH_ABI=${ANDROID_ABI} -DANDROID_STL=c++_shared 								\
-		-DCMAKE_ANDROID_NDK_TOOLCHAIN_VERSION=clang -DWITH_TBB=ON -DBUILD_ANDROID_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_TESTS=OFF -DCPU_BASELINE=NEON 				\
-		-DBUILD_JAVA=OFF -DENABLE_NEON=ON -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake ..
+	cmake -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules -DCMAKE_INSTALL_PREFIX=../build/${ANDROID_ABI} -DCMAKE_SYSTEM_NAME=Android \
+		-DANDROID_NATIVE_API_LEVEL=21 -DCMAKE_SYSTEM_VERSION=21 -DANDROID_ABI=${ANDROID_ABI} -DCMAKE_ANDROID_ARCH_ABI=${ANDROID_ABI} -DANDROID_STL=c++_shared \
+		-DCMAKE_ANDROID_NDK_TOOLCHAIN_VERSION=clang -DWITH_TBB=ON -DBUILD_ANDROID_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_TESTS=OFF -DCPU_BASELINE=NEON \
+		-DBUILD_JAVA=OFF -DENABLE_NEON=ON -DBUILD_opencv_calib3d=ON -DBUILD_opencv_features2d=ON -DBUILD_opencv_xfeatures2d=ON -DBUILD_opencv_ximgproc=ON -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake ..
 
 	make -j${NUM_CORES}
 
@@ -102,11 +102,11 @@ build_expat() {
 build_exiv2() {
 	LIBEXIV2_ARCHIVE="libexiv2-${LIBEXPAT_VERSION}.tar.gz"	
 
-	curl -L https://www.exiv2.org/builds/exiv2-${LIBEXIV2_VERSION}-Source.tar.gz --output ${LIBEXIV2_ARCHIVE}
+	curl -L https://github.com/Exiv2/exiv2/archive/refs/tags/v${LIBEXIV2_VERSION}.tar.gz --output ${LIBEXIV2_ARCHIVE}
 
 	tar -xvf ${LIBEXIV2_ARCHIVE}
 
-	pushd exiv2-${LIBEXIV2_VERSION}-Source
+	pushd exiv2-${LIBEXIV2_VERSION}
 
 	mkdir -p build
 	pushd build
@@ -130,7 +130,7 @@ build_exiv2() {
 	cp -a ./${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib/.
 
 	popd # build
-	popd # exiv2-${LIBEXIV2_VERSION}-Source
+	popd # exiv2-${LIBEXIV2_VERSION}
 
 	touch ".exiv2-${LIBEXIV2_VERSION}"
 }
@@ -194,17 +194,21 @@ halide_generate() {
 #     build_opencv
 # fi
 
-# if [ ! -f ".expat-${LIBEXPAT_VERSION}" ]; then
-# 	build_expat
-# fi
+if [ ! -f ".opencv-${OPENCV_VERSION}" ]; then
+    build_opencv
+fi
 
-# if [ ! -f ".exiv2-${LIBEXIV2_VERSION}" ]; then
-# 	build_exiv2
-# fi
+if [ ! -f ".expat-${LIBEXPAT_VERSION}" ]; then
+	build_expat
+fi
 
-# if [ ! -f ".zstd-${ZSTD_VERSION}" ]; then
-# 	build_zstd
-# fi
+if [ ! -f ".exiv2-${LIBEXIV2_VERSION}" ]; then
+	build_exiv2
+fi
+
+if [ ! -f ".zstd-${ZSTD_VERSION}" ]; then
+	build_zstd
+fi
 
 if [ ! -f ".halide" ]; then
 	build_halide

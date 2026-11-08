@@ -5,14 +5,7 @@
 #include <atomic>
 #include <thread>
 #include <functional>
-
-#if __has_include("concurrentqueue.h")
-#include "concurrentqueue.h"
-#elif __has_include("../thirdparty/queue/queue/concurrentqueue.h")
 #include "../thirdparty/queue/queue/concurrentqueue.h"
-#else
-#include "../../libMotionCam/thirdparty/queue/queue/concurrentqueue.h"
-#endif
 
 namespace motioncam {
 namespace mcraw_v3 {
@@ -37,7 +30,4 @@ private:
 };
 
 } // namespace mcraw_v3
-
-using WriterQueue = mcraw_v3::WriterQueue;
-
 } // namespace motioncam

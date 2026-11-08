@@ -7,7 +7,6 @@
 #include <motioncam/Settings.h>
 #include <motioncam/Exceptions.h>
 #include <motioncam/Logger.h>
-#include "camera/Logger.h"
 
 using namespace motioncam;
 
@@ -95,15 +94,13 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
 
         motioncam::ImageProcessor::process(*container, outputPath, listener);
     }
-    catch(const std::exception& e) {
-        LOGE("NativeProcessor ProcessInMemory error: %s", e.what());
-        gLastError = e.what();
-        return JNI_FALSE;
-    }
-    catch(...) {
-        LOGE("NativeProcessor ProcessInMemory unknown error");
-        gLastError = "Unknown error";
-        return JNI_FALSE;
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == nullptr) {
+            return JNI_FALSE;
+        }
+
+        env->ThrowNew(exClass, e.what());
     }
 
     return JNI_TRUE;
@@ -118,13 +115,13 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
     jobject progressListener) {
 
     const char* javaInputPath = env->GetStringUTFChars(inputPath_, nullptr);
-    std::string inputPath(javaInputPath ? javaInputPath : "");
+    std::string inputPath(javaInputPath);
 
     const char *javaOutputPath = env->GetStringUTFChars(outputPath_, nullptr);
-    std::string outputPath(javaOutputPath ? javaOutputPath : "");
+    std::string outputPath(javaOutputPath);
 
-    if (javaInputPath) env->ReleaseStringUTFChars(inputPath_, javaInputPath);
-    if (javaOutputPath) env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
+    env->ReleaseStringUTFChars(inputPath_, javaInputPath);
+    env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
 
     //
     // Process the image
@@ -135,15 +132,13 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
 
         motioncam::ImageProcessor::process(inputPath, outputPath, listener);
     }
-    catch(const std::exception& e) {
-        LOGE("NativeProcessor ProcessFile error: %s", e.what());
-        gLastError = e.what();
-        return JNI_FALSE;
-    }
-    catch(...) {
-        LOGE("NativeProcessor ProcessFile unknown error");
-        gLastError = "Unknown error";
-        return JNI_FALSE;
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == nullptr) {
+            return JNI_FALSE;
+        }
+
+        env->ThrowNew(exClass, e.what());
     }
 
     return JNI_TRUE;
