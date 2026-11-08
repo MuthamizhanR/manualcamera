@@ -1,10 +1,11 @@
-#include <cstdio>
 #ifndef Encoder_hpp
 #define Encoder_hpp
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 #include <nlohmann/json.hpp>
 
 namespace motioncam {
@@ -27,6 +28,11 @@ public:
     // Expose compression logic for unit testing
     static std::vector<uint8_t> compressFrame(const uint16_t* pixels, int width, int height);
 
+    // Bit-packing optimization for 10-bit raw pixels
+    static void packRAW10_NEON(const uint16_t* input, size_t numPixels, uint8_t* output);
+    static void packRAW10_Scalar(const uint16_t* input, size_t numPixels, uint8_t* output);
+    static void encodeRAW10(const uint16_t* input, size_t numPixels, std::vector<uint8_t>& output);
+
 private:
     FILE* mFile;
 
@@ -38,6 +44,17 @@ private:
     std::vector<BufferOffset> mFrameOffsets;
     std::vector<BufferOffset> mAudioOffsets;
 };
+
+namespace mcraw_v3 {
+
+class Encoder {
+public:
+    static void encode(const uint16_t* input, size_t numPixels, std::vector<uint8_t>& output) {
+        motioncam::Encoder::encodeRAW10(input, numPixels, output);
+    }
+};
+
+} // namespace mcraw_v3
 
 } // namespace motioncam
 

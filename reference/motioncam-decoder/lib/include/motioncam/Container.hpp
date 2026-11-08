@@ -106,10 +106,10 @@ namespace motioncam {
     static_assert(sizeof(AccelerometerDataHeader) == 8);
     static_assert(sizeof(GyroIndex) == 8);
     static_assert(sizeof(AccelerometerIndex) == 8);
-    static_assert(std::is_trivially_copyable_v<GyroDataHeader>);
-    static_assert(std::is_trivially_copyable_v<AccelerometerDataHeader>);
-    static_assert(std::is_trivially_copyable_v<GyroIndex>);
-    static_assert(std::is_trivially_copyable_v<AccelerometerIndex>);
+    static_assert(std::is_trivially_copyable<GyroDataHeader>::value);
+    static_assert(std::is_trivially_copyable<AccelerometerDataHeader>::value);
+    static_assert(std::is_trivially_copyable<GyroIndex>::value);
+    static_assert(std::is_trivially_copyable<AccelerometerIndex>::value);
 }
 
 #endif /* Container_h */
